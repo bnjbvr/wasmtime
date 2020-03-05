@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["api","Generating sequences of Wasmtime API calls."]],"struct":[["DifferentialConfig","A description of configuration options that we should do differential testing between."],["WasmOptTtf","A Wasm test case generator that is powered by Binaryen's `wasm-opt -ttf`."]]});

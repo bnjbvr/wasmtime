@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["is_wasi_module",""]],"struct":[["Wasi","An instantiated instance of the wasi exports."]]});
