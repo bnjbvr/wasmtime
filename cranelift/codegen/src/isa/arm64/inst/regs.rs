@@ -183,7 +183,7 @@ pub fn create_reg_universe() -> RealRegUniverse {
     allocable_by_class[RegClass::I64.rc_to_usize()] = Some(RegClassInfo {
         first: x_reg_base as usize,
         last: x_reg_last as usize,
-        suggested_scratch: Some(XREG_INDICES[14] as usize),
+        suggested_scratch: Some(XREG_INDICES[13] as usize),
     });
     allocable_by_class[RegClass::V128.rc_to_usize()] = Some(RegClassInfo {
         first: v_reg_base as usize,

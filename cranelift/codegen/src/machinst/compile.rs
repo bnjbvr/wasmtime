@@ -2,9 +2,11 @@
 
 use crate::ir::Function;
 use crate::machinst::*;
+use crate::timing;
 
 use log::debug;
 use regalloc::{allocate_registers, RegAllocAlgorithm};
+use std::env;
 
 /// Compile the given function down to VCode with allocated registers, ready
 /// for binary emission.
@@ -24,16 +26,28 @@ where
     debug!("vcode from lowering: \n{}", vcode.show_rru(Some(universe)));
 
     // Perform register allocation.
-    let result = allocate_registers(&mut vcode, RegAllocAlgorithm::Backtracking, universe)
-        .map_err(|err| {
-            debug!(
-                "Register allocation error for vcode\n{}\nError: {:?}",
-                vcode.show_rru(Some(universe)),
+    let algorithm = match env::var("REGALLOC") {
+        Ok(str) => match str.as_str() {
+            "lsrac" => RegAllocAlgorithm::LinearScanChecked,
+            "lsra" => RegAllocAlgorithm::LinearScan,
+            _ => RegAllocAlgorithm::Backtracking,
+        },
+        Err(_) => RegAllocAlgorithm::Backtracking,
+    };
+
+    let result = {
+        let _tt = timing::regalloc();
+        allocate_registers(&mut vcode, algorithm, universe)
+            .map_err(|err| {
+                debug!(
+                    "Register allocation error for vcode\n{}\nError: {:?}",
+                    vcode.show_rru(Some(universe)),
+                    err
+                );
                 err
-            );
-            err
-        })
-        .expect("register allocation");
+            })
+            .expect("register allocation")
+    };
 
     // Reorder vcode into final order and copy out final instruction sequence
     // all at once. This also inserts prologues/epilogues.

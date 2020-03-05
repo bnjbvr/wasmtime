@@ -60,9 +60,6 @@ anyhow = "1.0.19"
 [profile.release.build-override]
 opt-level = 0
 
-[profile.release]
-debug = true
-
 [workspace]
 members = [
   "cranelift",
@@ -85,3 +82,7 @@ test_programs = ["test-programs/test_programs"]
 
 [badges]
 maintenance = { status = "actively-developed" }
+
+[profile.release]
+debug = true
+#debug-assertions = true
