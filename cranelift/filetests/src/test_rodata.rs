@@ -127,4 +127,5 @@ impl binemit::CodeSink for RodataSink {
         assert!(self.in_rodata);
     }
     fn add_stackmap(&mut self, _: &[Value], _: &Function, _: &dyn TargetIsa) {}
+    fn add_call_site(&mut self, _: ir::Opcode, _: ir::SourceLoc) {}
 }

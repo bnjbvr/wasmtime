@@ -115,6 +115,7 @@ impl binemit::CodeSink for TextSink {
         _: &dyn isa::TargetIsa,
     ) {
     }
+    fn add_call_site(&mut self, _: ir::Opcode, _: ir::SourceLoc) {}
 }
 
 impl SubTest for TestBinEmit {
