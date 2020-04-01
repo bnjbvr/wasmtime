@@ -5,7 +5,7 @@
 
 use crate::binemit::{CodeOffset, CodeSink};
 use crate::ir::constant::{ConstantData, ConstantOffset};
-use crate::ir::{ExternalName, JumpTable, Type};
+use crate::ir::{self, ExternalName, JumpTable, Type};
 use crate::isa::arm64::inst::*;
 use crate::machinst::*;
 
@@ -137,7 +137,7 @@ pub enum MemLabel {
     /// ConstantPoolRel during emission. The isel should use it by emitting a
     /// Load64(ExtName(..)) to get the *address* of the external symbol, then
     /// calling/loading/storing that address as appropriate.
-    ExtName(ExternalName, i64),
+    ExtName(ExternalName, i64, ir::SourceLoc),
     /// Address of a particular code-segment offset.
     CodeOffset(CodeOffset),
 }
@@ -398,11 +398,11 @@ impl ShowWithRRU for MemLabel {
             }
             // Should be resolved into an offset before we pretty-print.
             &MemLabel::ConstantData(..) => "!!constant!!".to_string(),
-            &MemLabel::ExtName(ref name, off) => {
+            &MemLabel::ExtName(ref name, off, loc) => {
                 if off != 0 {
-                    format!("{} + {}", name, off)
+                    format!("{} + {} @ {}", name, off, loc)
                 } else {
-                    format!("{}", name)
+                    format!("{} @ {}", name, loc)
                 }
             }
             &MemLabel::JumpTable(jt) => format!("{}", jt),

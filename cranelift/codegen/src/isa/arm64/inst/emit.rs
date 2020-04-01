@@ -59,10 +59,10 @@ pub fn memlabel_finalize<O: MachSectionOutput>(
             (off as i32) - (insn_off as i32),
             format!("Code offset {}", off),
         ),
-        &MemLabel::ExtName(ref name, offset) => {
+        &MemLabel::ExtName(ref name, offset, loc) => {
             consts.align_to(8);
             let off = consts.cur_offset_from_start();
-            consts.add_reloc(Reloc::Abs8, name, offset);
+            consts.add_reloc(loc, Reloc::Abs8, name, offset);
             consts.put_data(&[0, 0, 0, 0, 0, 0, 0, 0]);
             (
                 (off as i32) - (insn_off as i32),
@@ -808,8 +808,8 @@ impl<O: MachSectionOutput> MachInstEmit<O> for Inst {
             &Inst::EpiloguePlaceholder {} => {
                 // Noop; this is just a placeholder for epilogues.
             }
-            &Inst::Call { ref dest, .. } => {
-                sink.add_reloc(Reloc::Arm64Call, dest, 0);
+            &Inst::Call { ref dest, loc, .. } => {
+                sink.add_reloc(loc, Reloc::Arm64Call, dest, 0);
                 sink.put4(enc_jump26(0b100101, 0));
             }
             &Inst::CallInd { rn, .. } => {

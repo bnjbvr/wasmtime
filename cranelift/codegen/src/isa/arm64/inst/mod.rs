@@ -318,12 +318,14 @@ pub enum Inst {
         dest: ExternalName,
         uses: Set<Reg>,
         defs: Set<Writable<Reg>>,
+        loc: SourceLoc,
     },
     /// A machine indirect-call instruction.
     CallInd {
         rn: Reg,
         uses: Set<Reg>,
         defs: Set<Writable<Reg>>,
+        loc: SourceLoc,
     },
 
     // ---- branches (exactly one must appear at end of BB) ----
@@ -893,11 +895,17 @@ fn arm64_map_regs(
             ref uses,
             ref defs,
             ref dest,
+            loc,
         } => {
             let uses = uses.map(|r| map(u, *r));
             let defs = defs.map(|r| map_wr(d, *r));
             let dest = dest.clone();
-            Inst::Call { dest, uses, defs }
+            Inst::Call {
+                dest,
+                uses,
+                defs,
+                loc,
+            }
         }
         &mut Inst::Ret {} => Inst::Ret {},
         &mut Inst::EpiloguePlaceholder {} => Inst::EpiloguePlaceholder {},
@@ -905,6 +913,7 @@ fn arm64_map_regs(
             ref uses,
             ref defs,
             rn,
+            loc,
         } => {
             let uses = uses.map(|r| map(u, *r));
             let defs = defs.map(|r| map_wr(d, *r));
@@ -912,6 +921,7 @@ fn arm64_map_regs(
                 uses,
                 defs,
                 rn: map(u, rn),
+                loc,
             }
         }
         &mut Inst::CondBr {
