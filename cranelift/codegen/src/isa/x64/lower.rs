@@ -973,7 +973,49 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             };
 
             let dst = output_to_reg(ctx, outputs[0]);
-            ctx.emit(Inst::int_to_xmm(opcode, src, dst));
+            ctx.emit(Inst::gpr_to_xmm(opcode, src, dst));
+        }
+
+        Opcode::FcvtFromUint => {
+            let dst = output_to_reg(ctx, outputs[0]);
+            let ty = ty.unwrap();
+
+            let input_ty = ctx.input_ty(insn, 0);
+            match input_ty {
+                I8 | I16 | I32 => {
+                    // Conversion from an unsigned int smaller than 64-bit is easy: zero-extend +
+                    // do a signed conversion (which won't overflow).
+                    let (ext_spec, opcode) = if ty == F32 {
+                        (ExtSpec::ZeroExtendTo32, SseOpcode::Cvtsi2ss)
+                    } else {
+                        assert_eq!(ty, F64);
+                        (ExtSpec::ZeroExtendTo64, SseOpcode::Cvtsi2sd)
+                    };
+
+                    let src = if input_ty == I32 {
+                        input_to_reg_mem(ctx, inputs[0])
+                    } else {
+                        RegMem::reg(extend_input_to_reg(ctx, inputs[0], ext_spec))
+                    };
+
+                    ctx.emit(Inst::gpr_to_xmm(opcode, src, dst));
+                }
+
+                I64 => {
+                    let src = input_to_reg(ctx, inputs[0]);
+                    let tmp_gpr1 = ctx.alloc_tmp(RegClass::I64, I64);
+                    let tmp_gpr2 = ctx.alloc_tmp(RegClass::I64, I64);
+                    ctx.emit(Inst::cvt_u64_to_float_seq(
+                        ty == F64,
+                        src,
+                        tmp_gpr1,
+                        tmp_gpr2,
+                        dst,
+                    ));
+                }
+
+                _ => panic!("unexpected input type for FcvtFromUint: {:?}", input_ty),
+            };
         }
 
         Opcode::Bitcast => {

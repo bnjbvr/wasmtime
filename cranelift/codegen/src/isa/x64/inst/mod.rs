@@ -234,6 +234,16 @@ pub enum Inst {
         dst: Writable<Reg>,
     },
 
+    /// Converts an unsigned int64 to a float64.
+    CvtUint64ToFloatSeq {
+        /// Is the target a 64-bits or 32-bits register?
+        to_f64: bool,
+        src: Reg,
+        dst: Writable<Reg>,
+        tmp_gpr1: Writable<Reg>,
+        tmp_gpr2: Writable<Reg>,
+    },
+
     /// XMM (scalar) conditional move.
     /// Overwrites the destination register if cc is set.
     XmmCmove {
@@ -491,6 +501,26 @@ impl Inst {
         //TODO:: Add assert_reg_type helper
         debug_assert!(dst.get_class() == RegClass::V128);
         Inst::XMM_Cmp_RM_R { op, src, dst }
+    }
+
+    pub(crate) fn cvt_u64_to_float_seq(
+        to_f64: bool,
+        src: Reg,
+        tmp_gpr1: Writable<Reg>,
+        tmp_gpr2: Writable<Reg>,
+        dst: Writable<Reg>,
+    ) -> Inst {
+        debug_assert!(src.get_class() == RegClass::I64);
+        debug_assert!(tmp_gpr1.to_reg().get_class() == RegClass::I64);
+        debug_assert!(tmp_gpr2.to_reg().get_class() == RegClass::I64);
+        debug_assert!(dst.to_reg().get_class() == RegClass::V128);
+        Inst::CvtUint64ToFloatSeq {
+            src,
+            dst,
+            tmp_gpr1,
+            tmp_gpr2,
+            to_f64,
+        }
     }
 
     pub(crate) fn movzx_rm_r(
@@ -878,6 +908,19 @@ impl ShowWithRRU for Inst {
                 src.show_rru_sized(mb_rru, 8),
                 show_ireg_sized(*dst, mb_rru, 8),
             ),
+
+            Inst::CvtUint64ToFloatSeq {
+                src, dst, to_f64, ..
+            } => format!(
+                "{} {}, {}",
+                ljustify(format!(
+                    "u64_to_{}_seq",
+                    if *to_f64 { "f64" } else { "f32" }
+                )),
+                src.show_rru_sized(mb_rru, 8),
+                dst.show_rru(mb_rru),
+            ),
+
             Inst::Imm_R {
                 dst_is_64,
                 simm64,
@@ -1151,6 +1194,18 @@ fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
             src.get_regs_as_uses(collector);
             collector.add_def(*dst);
         }
+        Inst::CvtUint64ToFloatSeq {
+            src,
+            dst,
+            tmp_gpr1,
+            tmp_gpr2,
+            ..
+        } => {
+            collector.add_use(*src);
+            collector.add_def(*dst);
+            collector.add_def(*tmp_gpr1);
+            collector.add_def(*tmp_gpr2);
+        }
         Inst::MovZX_RM_R { src, dst, .. } => {
             src.get_regs_as_uses(collector);
             collector.add_def(*dst);
@@ -1384,6 +1439,18 @@ fn x64_map_regs<RUM: RegUsageMapper>(inst: &mut Inst, mapper: &RUM) {
         } => {
             src.map_uses(mapper);
             map_def(mapper, dst);
+        }
+        Inst::CvtUint64ToFloatSeq {
+            ref mut src,
+            ref mut dst,
+            ref mut tmp_gpr1,
+            ref mut tmp_gpr2,
+            ..
+        } => {
+            map_use(mapper, src);
+            map_def(mapper, dst);
+            map_def(mapper, tmp_gpr1);
+            map_def(mapper, tmp_gpr2);
         }
         Inst::MovZX_RM_R {
             ref mut src,

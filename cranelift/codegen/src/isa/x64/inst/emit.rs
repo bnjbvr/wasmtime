@@ -1624,6 +1624,132 @@ pub(crate) fn emit(
             }
         }
 
+        Inst::CvtUint64ToFloatSeq {
+            to_f64,
+            src,
+            dst,
+            tmp_gpr1,
+            tmp_gpr2,
+        } => {
+            // Emit the following sequence:
+            //
+            //  cmp 0, %src
+            //  jl handle_negative
+            //
+            //  ;; handle positive, which can't overflow
+            //  cvtsi2sd/cvtsi2ss %src, %dst
+            //  j done
+            //
+            //  handle_negative:
+            //  mov %src, %tmp_gpr1
+            //  shr $1, %tmp_gpr1
+            //  mov %src, %tmp_gpr2
+            //  and $1, %tmp_gpr2
+            //  or %tmp_gpr1, %tmp_gpr2
+            //  ctsi2sd/cvtsi2ss %tmp_gpr2, %dst
+            //  addsd/addss %dst, %dst
+            //
+            //  done:
+
+            // A small helper to generate a signed conversion instruction, that helps deduplicating
+            // code below.
+            let emit_signed_cvt = |sink: &mut MachBuffer<Inst>,
+                                   flags: &settings::Flags,
+                                   state: &mut EmitState,
+                                   src: Reg,
+                                   dst: Writable<Reg>,
+                                   to_f64: bool| {
+                // Handle an unsigned int, which is the "easy" case: a signed conversion will do the
+                // right thing.
+                if to_f64 {
+                    // Emit cvtsi2sd 64 bits.
+                    let inst = Inst::gpr_to_xmm(SseOpcode::Cvtsi2sd, RegMem::reg(src), dst);
+                    inst.emit(sink, flags, state);
+                } else {
+                    // Emit cvtsi2ss 64 bits. We can'juse reuse gpr_to_xmm here, because the input is a
+                    // 64-bits integer, which requires the REX prefix.
+                    emit_std_reg_reg(
+                        sink,
+                        LegacyPrefix::_F3,
+                        0x0F2A,
+                        2,
+                        dst.to_reg(),
+                        src,
+                        RexFlags::set_w(),
+                    );
+                }
+            };
+
+            let handle_negative = sink.get_label();
+            let done = sink.get_label();
+
+            // If x seen as a signed int is not negative, a signed-conversion will do the right
+            // thing.
+            // TODO use tst src, src here.
+            let inst = Inst::cmp_rmi_r(8, RegMemImm::imm(0), *src);
+            inst.emit(sink, flags, state);
+
+            one_way_jmp(sink, CC::L, handle_negative);
+
+            // Handle an unsigned int, which is the "easy" case: a signed conversion will do the
+            // right thing.
+            emit_signed_cvt(sink, flags, state, *src, *dst, *to_f64);
+
+            let inst = Inst::jmp_known(BranchTarget::Label(done));
+            inst.emit(sink, flags, state);
+
+            sink.bind_label(handle_negative);
+
+            // Divide x by two to get it in range for the signed conversion, keep the LSB, and
+            // scale it back up on the FP side.
+            if tmp_gpr1.to_reg() != *src {
+                let inst = Inst::gen_move(*tmp_gpr1, *src, I64);
+                inst.emit(sink, flags, state);
+            }
+
+            // tmp_gpr1 := src >> 1
+            let inst = Inst::shift_r(
+                /*is_64*/ true,
+                ShiftKind::ShiftRightLogical,
+                Some(1),
+                *tmp_gpr1,
+            );
+            inst.emit(sink, flags, state);
+
+            if tmp_gpr2.to_reg() != *src {
+                let inst = Inst::gen_move(*tmp_gpr2, *src, I64);
+                inst.emit(sink, flags, state);
+            }
+
+            let inst = Inst::alu_rmi_r(
+                true, /* 64bits */
+                AluRmiROpcode::And,
+                RegMemImm::imm(1),
+                *tmp_gpr2,
+            );
+            inst.emit(sink, flags, state);
+
+            let inst = Inst::alu_rmi_r(
+                true, /* 64bits */
+                AluRmiROpcode::Or,
+                RegMemImm::reg(tmp_gpr1.to_reg()),
+                *tmp_gpr2,
+            );
+            inst.emit(sink, flags, state);
+
+            emit_signed_cvt(sink, flags, state, tmp_gpr2.to_reg(), *dst, *to_f64);
+
+            let add_op = if *to_f64 {
+                SseOpcode::Addsd
+            } else {
+                SseOpcode::Addss
+            };
+            let inst = Inst::xmm_rm_r(add_op, RegMem::reg(dst.to_reg()), *dst);
+            inst.emit(sink, flags, state);
+
+            sink.bind_label(done);
+        }
+
         Inst::LoadExtName {
             dst,
             name,

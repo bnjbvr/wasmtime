@@ -3103,12 +3103,12 @@ fn test_x64_emit() {
     ));
 
     insns.push((
-        Inst::int_to_xmm(SseOpcode::Cvtsi2ss, RegMem::reg(rdi), w_xmm15),
+        Inst::gpr_to_xmm(SseOpcode::Cvtsi2ss, RegMem::reg(rdi), w_xmm15),
         "F3440F2AFF",
         "cvtsi2ss %edi, %xmm15",
     ));
     insns.push((
-        Inst::int_to_xmm(SseOpcode::Cvtsi2sd, RegMem::reg(rsi), w_xmm1),
+        Inst::gpr_to_xmm(SseOpcode::Cvtsi2sd, RegMem::reg(rsi), w_xmm1),
         "F2480F2ACE",
         "cvtsi2sd %rsi, %xmm1",
     ));
