@@ -860,8 +860,8 @@ impl ShowWithRRU for Inst {
 
             Inst::GprToXmm { op, src, dst } => {
                 let src_size = match op {
-                    SseOpcode::Movd => 4,
-                    SseOpcode::Movq => 8,
+                    SseOpcode::Movd | SseOpcode::Cvtsi2ss => 4,
+                    SseOpcode::Movq | SseOpcode::Cvtsi2sd => 8,
                     _ => panic!("unexpected sse opcode"),
                 };
                 format!(

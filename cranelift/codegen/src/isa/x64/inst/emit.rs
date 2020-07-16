@@ -1590,6 +1590,8 @@ pub(crate) fn emit(
             let (rex, prefix, opcode) = match op {
                 SseOpcode::Movd => (RexFlags::clear_w(), LegacyPrefix::_66, 0x0F6E),
                 SseOpcode::Movq => (RexFlags::set_w(), LegacyPrefix::_66, 0x0F6E),
+                SseOpcode::Cvtsi2ss => (RexFlags::clear_w(), LegacyPrefix::_F3, 0x0F2A),
+                SseOpcode::Cvtsi2sd => (RexFlags::set_w(), LegacyPrefix::_F2, 0x0F2A),
                 _ => panic!("unexpected opcode {:?}", op),
             };
             match src_e {

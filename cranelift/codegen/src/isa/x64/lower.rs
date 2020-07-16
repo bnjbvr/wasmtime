@@ -953,6 +953,29 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             ctx.emit(Inst::xmm_unary_rm_r(SseOpcode::Cvtsd2ss, src, dst));
         }
 
+        Opcode::FcvtFromSint => {
+            let (ext_spec, ty) = match ctx.input_ty(insn, 0) {
+                I8 | I16 => (Some(ExtSpec::SignExtendTo32), I32),
+                a if a == I32 || a == I64 => (None, a),
+                _ => unreachable!(),
+            };
+
+            let src = match ext_spec {
+                Some(ext_spec) => RegMem::reg(extend_input_to_reg(ctx, inputs[0], ext_spec)),
+                None => input_to_reg_mem(ctx, inputs[0]),
+            };
+
+            let opcode = if ty == I32 {
+                SseOpcode::Cvtsi2ss
+            } else {
+                assert_eq!(ty, I64);
+                SseOpcode::Cvtsi2sd
+            };
+
+            let dst = output_to_reg(ctx, outputs[0]);
+            ctx.emit(Inst::int_to_xmm(opcode, src, dst));
+        }
+
         Opcode::Bitcast => {
             let input_ty = ctx.input_ty(insn, 0);
             let output_ty = ctx.output_ty(insn, 0);
