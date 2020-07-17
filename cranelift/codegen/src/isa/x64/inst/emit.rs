@@ -1750,6 +1750,74 @@ pub(crate) fn emit(
             sink.bind_label(done);
         }
 
+        Inst::CvtFloatToIntSeq {
+            to_signed_int,
+            to_int64,
+            from_float64,
+            src,
+            dst,
+            tmp_xmm1,
+            tmp_xmm2,
+        } => {
+            if *to_signed_int {
+                // Emits the following sequence:
+                //
+                // cvttss2si/cvttsd2si %src, %dst
+                // cmp dst, $INT_MIN
+                // jne done
+                //
+                // ;; check for NaN
+                // cmpss/cmpsd %src, %src
+                // jnp next_check
+                // trap BadConversionToInteger
+                //
+                // ;; check if INT_MIN was the correct result
+                // cmpss/cmpsd INT_MIN, %src
+                // jnl/jnle $next_check2
+                // trap IntegerOverflow
+                //
+                // ;; if positive, it was a real overflow
+                // cmpss/cmpsd 0.f, %src
+                // jnge done
+                // trap IntegerOverflow
+                //
+                // done:
+                let done = sink.get_label();
+                todo!();
+                //sink.bind_label(done);
+            } else {
+                // Emits the following sequence:
+                //
+                // f32const/f64const 2**(int_width - 1), %tmp_pow2nmi1
+                // cmpss/cmpsd %tmp_xmm, %src
+                // jge is_large
+                //
+                // ;; check for NaN inputs
+                // jnp next
+                // trap BadConversionToInteger
+                //
+                // next:
+                // cvttss2si/cvttsd2si %src, %dst
+                // cmp 0, %dst
+                // jge done
+                // trap IntegerOverflow
+                //
+                // is_large:
+                // movss/movsd %x, %tmp_x
+                // subss/subsd %tmp_pow2nmi1, %tmp_x
+                // cvttss2si/cvttss2sd %tmp_x, %dst
+                // cmp 0, %dst
+                // jnl next_is_large
+                // trap IntegerOverflow
+                //
+                // next_is_large:
+                // add 2**(int_width -1), %dst
+                //
+                // done:
+                todo!()
+            }
+        }
+
         Inst::LoadExtName {
             dst,
             name,
@@ -1792,4 +1860,25 @@ pub(crate) fn emit(
             // Generate no code.
         }
     }
+}
+
+pub(crate) fn emit_cvt2si(
+    sink: &mut MachBuffer<Inst>,
+    from_float64: bool,
+    to_int64: bool,
+    src: Reg,
+    dst: Writable<Reg>,
+) {
+    let rex = if to_int64 {
+        RexFlags::set_w()
+    } else {
+        RexFlags::clear_w()
+    };
+    let prefix = if from_float64 {
+        LegacyPrefix::_F2
+    } else {
+        LegacyPrefix::_F3
+    };
+    let opcode = 0x0F2C;
+    emit_std_reg_reg(sink, prefix, 0x0f2c, 2, dst.to_reg(), src, rex);
 }

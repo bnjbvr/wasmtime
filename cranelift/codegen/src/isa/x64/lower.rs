@@ -1018,6 +1018,12 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             };
         }
 
+        Opcode::FcvtToUint | Opcode::FcvtToSint => {
+            let src = input_to_reg(ctx, inputs[0]);
+            let dst = output_to_reg(ctx, outputs[0]);
+            ctx.emit(Inst::cvt_float_to_int_seq(src, dst));
+        }
+
         Opcode::Bitcast => {
             let input_ty = ctx.input_ty(insn, 0);
             let output_ty = ctx.output_ty(insn, 0);

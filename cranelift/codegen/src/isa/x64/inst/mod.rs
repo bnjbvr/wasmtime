@@ -244,6 +244,19 @@ pub enum Inst {
         tmp_gpr2: Writable<Reg>,
     },
 
+    /// Converts a scalar xmm to an int32/int64.
+    CvtFloatToIntSeq {
+        to_signed_int: bool,
+        to_int64: bool,
+        from_float64: bool,
+        src: Reg,
+        dst: Writable<Reg>,
+        /// This temp is only used when to_signed_int is false.
+        tmp_xmm1: Option<Writable<Reg>>,
+        /// This temp is only used when to_signed_int is false.
+        tmp_xmm2: Option<Writable<Reg>>,
+    },
+
     /// XMM (scalar) conditional move.
     /// Overwrites the destination register if cc is set.
     XmmCmove {
@@ -520,6 +533,24 @@ impl Inst {
             tmp_gpr1,
             tmp_gpr2,
             to_f64,
+        }
+    }
+
+    pub(crate) fn cvt_float_to_int_seq(
+        from_float64: bool,
+        to_signed_int: bool,
+        to_int64: bool,
+        src: Reg,
+        dst: Writable<Reg>,
+    ) -> Inst {
+        debug_assert!(src.get_class() == RegClass::V128);
+        debug_assert!(dst.to_reg().get_class() == RegClass::I64);
+        Inst::CvtFloatToIntSeq {
+            src,
+            dst,
+            to_signed_int,
+            to_int64,
+            from_float64,
         }
     }
 
