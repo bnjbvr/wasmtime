@@ -3103,32 +3103,62 @@ fn test_x64_emit() {
     ));
 
     insns.push((
-        Inst::gpr_to_xmm(SseOpcode::Movd, RegMem::reg(rax), w_xmm15),
+        Inst::gpr_to_xmm(
+            SseOpcode::Movd,
+            RegMem::reg(rax),
+            OperandSize::Size32,
+            w_xmm15,
+        ),
         "66440F6EF8",
         "movd    %eax, %xmm15",
     ));
     insns.push((
-        Inst::gpr_to_xmm(SseOpcode::Movd, RegMem::mem(Amode::imm_reg(2, r10)), w_xmm9),
+        Inst::gpr_to_xmm(
+            SseOpcode::Movd,
+            RegMem::mem(Amode::imm_reg(2, r10)),
+            OperandSize::Size32,
+            w_xmm9,
+        ),
         "66450F6E4A02",
         "movd    2(%r10), %xmm9",
     ));
     insns.push((
-        Inst::gpr_to_xmm(SseOpcode::Movd, RegMem::reg(rsi), w_xmm1),
+        Inst::gpr_to_xmm(
+            SseOpcode::Movd,
+            RegMem::reg(rsi),
+            OperandSize::Size32,
+            w_xmm1,
+        ),
         "660F6ECE",
         "movd    %esi, %xmm1",
     ));
     insns.push((
-        Inst::gpr_to_xmm(SseOpcode::Movq, RegMem::reg(rdi), w_xmm15),
+        Inst::gpr_to_xmm(
+            SseOpcode::Movq,
+            RegMem::reg(rdi),
+            OperandSize::Size64,
+            w_xmm15,
+        ),
         "664C0F6EFF",
         "movq    %rdi, %xmm15",
     ));
     insns.push((
-        Inst::gpr_to_xmm(SseOpcode::Cvtsi2ss, RegMem::reg(rdi), w_xmm15),
+        Inst::gpr_to_xmm(
+            SseOpcode::Cvtsi2ss,
+            RegMem::reg(rdi),
+            OperandSize::Size32,
+            w_xmm15,
+        ),
         "F3440F2AFF",
         "cvtsi2ss %edi, %xmm15",
     ));
     insns.push((
-        Inst::gpr_to_xmm(SseOpcode::Cvtsi2sd, RegMem::reg(rsi), w_xmm1),
+        Inst::gpr_to_xmm(
+            SseOpcode::Cvtsi2sd,
+            RegMem::reg(rsi),
+            OperandSize::Size64,
+            w_xmm1,
+        ),
         "F2480F2ACE",
         "cvtsi2sd %rsi, %xmm1",
     ));
