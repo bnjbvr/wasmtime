@@ -220,11 +220,12 @@ pub enum Inst {
         srcloc: Option<SourceLoc>,
     },
 
-    /// XMM (scalar) unary op (from xmm to integer reg): movd, movq
+    /// XMM (scalar) unary op (from xmm to integer reg): movd, movq, cvtts{s,d}2si
     XmmToGpr {
         op: SseOpcode,
         src: Reg,
         dst: Writable<Reg>,
+        dst_size: OperandSize,
     },
 
     /// XMM (scalar) unary op (from integer to float reg): movd, movq
@@ -244,17 +245,26 @@ pub enum Inst {
         tmp_gpr2: Writable<Reg>,
     },
 
-    /// Converts a scalar xmm to an int32/int64.
-    CvtFloatToIntSeq {
-        to_signed_int: bool,
-        to_int64: bool,
-        from_float64: bool,
+    /// Converts a scalar xmm to a signed int32/int64.
+    CvtFloatToSintSeq {
+        dst_size: OperandSize,
+        src_size: OperandSize,
         src: Reg,
         dst: Writable<Reg>,
-        /// This temp is only used when to_signed_int is false.
-        tmp_xmm1: Option<Writable<Reg>>,
-        /// This temp is only used when to_signed_int is false.
-        tmp_xmm2: Option<Writable<Reg>>,
+        tmp_gpr: Writable<Reg>,
+        tmp_xmm: Writable<Reg>,
+        srcloc: SourceLoc,
+    },
+
+    /// Converts a scalar xmm to an unsigned int32/int64.
+    CvtFloatToUintSeq {
+        src_size: OperandSize,
+        dst_size: OperandSize,
+        src: Reg,
+        dst: Writable<Reg>,
+        tmp_xmm1: Writable<Reg>,
+        tmp_xmm2: Writable<Reg>,
+        srcloc: SourceLoc,
     },
 
     /// XMM (scalar) conditional move.
@@ -498,10 +508,20 @@ impl Inst {
         }
     }
 
-    pub(crate) fn xmm_to_gpr(op: SseOpcode, src: Reg, dst: Writable<Reg>) -> Inst {
+    pub(crate) fn xmm_to_gpr(
+        op: SseOpcode,
+        src: Reg,
+        dst: Writable<Reg>,
+        dst_size: OperandSize,
+    ) -> Inst {
         debug_assert!(src.get_class() == RegClass::V128);
         debug_assert!(dst.to_reg().get_class() == RegClass::I64);
-        Inst::XmmToGpr { op, src, dst }
+        Inst::XmmToGpr {
+            op,
+            src,
+            dst,
+            dst_size,
+        }
     }
 
     pub(crate) fn gpr_to_xmm(op: SseOpcode, src: RegMem, dst: Writable<Reg>) -> Inst {
@@ -511,7 +531,7 @@ impl Inst {
     }
 
     pub(crate) fn xmm_cmp_rm_r(op: SseOpcode, src: RegMem, dst: Reg) -> Inst {
-        //TODO:: Add assert_reg_type helper
+        src.assert_regclass_is(RegClass::V128);
         debug_assert!(dst.get_class() == RegClass::V128);
         Inst::XMM_Cmp_RM_R { op, src, dst }
     }
@@ -536,21 +556,51 @@ impl Inst {
         }
     }
 
-    pub(crate) fn cvt_float_to_int_seq(
-        from_float64: bool,
-        to_signed_int: bool,
-        to_int64: bool,
+    pub(crate) fn cvt_float_to_sint_seq(
+        src_size: OperandSize,
+        dst_size: OperandSize,
         src: Reg,
         dst: Writable<Reg>,
+        tmp_xmm: Writable<Reg>,
+        tmp_gpr: Writable<Reg>,
+        srcloc: SourceLoc,
     ) -> Inst {
         debug_assert!(src.get_class() == RegClass::V128);
+        debug_assert!(tmp_xmm.to_reg().get_class() == RegClass::V128);
+        debug_assert!(tmp_gpr.to_reg().get_class() == RegClass::I64);
         debug_assert!(dst.to_reg().get_class() == RegClass::I64);
-        Inst::CvtFloatToIntSeq {
+        Inst::CvtFloatToSintSeq {
             src,
             dst,
-            to_signed_int,
-            to_int64,
-            from_float64,
+            src_size,
+            dst_size,
+            tmp_gpr,
+            tmp_xmm,
+            srcloc,
+        }
+    }
+
+    pub(crate) fn cvt_float_to_uint_seq(
+        src_size: OperandSize,
+        dst_size: OperandSize,
+        src: Reg,
+        dst: Writable<Reg>,
+        tmp_xmm1: Writable<Reg>,
+        tmp_xmm2: Writable<Reg>,
+        srcloc: SourceLoc,
+    ) -> Inst {
+        debug_assert!(src.get_class() == RegClass::V128);
+        debug_assert!(tmp_xmm1.to_reg().get_class() == RegClass::V128);
+        debug_assert!(tmp_xmm2.to_reg().get_class() == RegClass::V128);
+        debug_assert!(dst.to_reg().get_class() == RegClass::I64);
+        Inst::CvtFloatToUintSeq {
+            src,
+            dst,
+            src_size,
+            dst_size,
+            tmp_xmm1,
+            tmp_xmm2,
+            srcloc,
         }
     }
 
@@ -905,11 +955,15 @@ impl ShowWithRRU for Inst {
                 show_ireg_sized(dst.to_reg(), mb_rru, 8),
             ),
 
-            Inst::XmmToGpr { op, src, dst } => {
-                let dst_size = match op {
-                    SseOpcode::Movd => 4,
-                    SseOpcode::Movq => 8,
-                    _ => panic!("unexpected sse opcode"),
+            Inst::XmmToGpr {
+                op,
+                src,
+                dst,
+                dst_size,
+            } => {
+                let dst_size = match dst_size {
+                    OperandSize::Size32 => 4,
+                    OperandSize::Size64 => 8,
                 };
                 format!(
                     "{} {}, {}",
@@ -950,6 +1004,56 @@ impl ShowWithRRU for Inst {
                 )),
                 src.show_rru_sized(mb_rru, 8),
                 dst.show_rru(mb_rru),
+            ),
+
+            Inst::CvtFloatToSintSeq {
+                src,
+                dst,
+                src_size,
+                dst_size,
+                ..
+            } => format!(
+                "{} {}, {}",
+                ljustify(format!(
+                    "cvt_float{}_to_sint{}_seq",
+                    if *src_size == OperandSize::Size64 {
+                        "64"
+                    } else {
+                        "32"
+                    },
+                    if *dst_size == OperandSize::Size64 {
+                        "64"
+                    } else {
+                        "32"
+                    }
+                )),
+                src.show_rru(mb_rru),
+                dst.show_rru_sized(mb_rru, dst_size.to_bytes())
+            ),
+
+            Inst::CvtFloatToUintSeq {
+                src,
+                dst,
+                src_size,
+                dst_size,
+                ..
+            } => format!(
+                "{} {}, {}",
+                ljustify(format!(
+                    "cvt_float{}_to_uint{}_seq",
+                    if *src_size == OperandSize::Size64 {
+                        "64"
+                    } else {
+                        "32"
+                    },
+                    if *dst_size == OperandSize::Size64 {
+                        "64"
+                    } else {
+                        "32"
+                    }
+                )),
+                src.show_rru(mb_rru),
+                dst.show_rru_sized(mb_rru, dst_size.to_bytes())
             ),
 
             Inst::Imm_R {
@@ -1237,6 +1341,30 @@ fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
             collector.add_def(*tmp_gpr1);
             collector.add_def(*tmp_gpr2);
         }
+        Inst::CvtFloatToSintSeq {
+            src,
+            dst,
+            tmp_xmm,
+            tmp_gpr,
+            ..
+        } => {
+            collector.add_use(*src);
+            collector.add_def(*dst);
+            collector.add_def(*tmp_xmm);
+            collector.add_def(*tmp_gpr);
+        }
+        Inst::CvtFloatToUintSeq {
+            src,
+            dst,
+            tmp_xmm1,
+            tmp_xmm2,
+            ..
+        } => {
+            collector.add_use(*src);
+            collector.add_def(*dst);
+            collector.add_def(*tmp_xmm1);
+            collector.add_def(*tmp_xmm2);
+        }
         Inst::MovZX_RM_R { src, dst, .. } => {
             src.get_regs_as_uses(collector);
             collector.add_def(*dst);
@@ -1482,6 +1610,30 @@ fn x64_map_regs<RUM: RegUsageMapper>(inst: &mut Inst, mapper: &RUM) {
             map_def(mapper, dst);
             map_def(mapper, tmp_gpr1);
             map_def(mapper, tmp_gpr2);
+        }
+        Inst::CvtFloatToSintSeq {
+            ref mut src,
+            ref mut dst,
+            ref mut tmp_xmm,
+            ref mut tmp_gpr,
+            ..
+        } => {
+            map_use(mapper, src);
+            map_def(mapper, dst);
+            map_def(mapper, tmp_xmm);
+            map_def(mapper, tmp_gpr);
+        }
+        Inst::CvtFloatToUintSeq {
+            ref mut src,
+            ref mut dst,
+            ref mut tmp_xmm1,
+            ref mut tmp_xmm2,
+            ..
+        } => {
+            map_use(mapper, src);
+            map_def(mapper, dst);
+            map_def(mapper, tmp_xmm1);
+            map_def(mapper, tmp_xmm2);
         }
         Inst::MovZX_RM_R {
             ref mut src,
