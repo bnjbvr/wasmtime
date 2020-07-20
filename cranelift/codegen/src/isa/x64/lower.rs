@@ -1023,12 +1023,13 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             let dst = output_to_reg(ctx, outputs[0]);
 
             let input_ty = ctx.input_ty(insn, 0);
-            let src_size = if input_ty == I32 {
+            let src_size = if input_ty == F32 {
                 OperandSize::Size32
             } else {
-                assert_eq!(input_ty, I64);
+                assert_eq!(input_ty, F64);
                 OperandSize::Size64
             };
+
             let output_ty = ty.unwrap();
             let dst_size = if output_ty == I32 {
                 OperandSize::Size32
@@ -1049,8 +1050,9 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             } else {
                 let tmp_xmm1 = ctx.alloc_tmp(RegClass::V128, input_ty);
                 let tmp_xmm2 = ctx.alloc_tmp(RegClass::V128, input_ty);
+                let tmp_gpr = ctx.alloc_tmp(RegClass::I64, output_ty);
                 ctx.emit(Inst::cvt_float_to_uint_seq(
-                    src_size, dst_size, src, dst, tmp_xmm1, tmp_xmm2, srcloc,
+                    src_size, dst_size, src, dst, tmp_gpr, tmp_xmm1, tmp_xmm2, srcloc,
                 ));
             }
         }

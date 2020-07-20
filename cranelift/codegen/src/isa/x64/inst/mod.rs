@@ -262,6 +262,7 @@ pub enum Inst {
         dst_size: OperandSize,
         src: Reg,
         dst: Writable<Reg>,
+        tmp_gpr: Writable<Reg>,
         tmp_xmm1: Writable<Reg>,
         tmp_xmm2: Writable<Reg>,
         srcloc: SourceLoc,
@@ -585,6 +586,7 @@ impl Inst {
         dst_size: OperandSize,
         src: Reg,
         dst: Writable<Reg>,
+        tmp_gpr: Writable<Reg>,
         tmp_xmm1: Writable<Reg>,
         tmp_xmm2: Writable<Reg>,
         srcloc: SourceLoc,
@@ -598,6 +600,7 @@ impl Inst {
             dst,
             src_size,
             dst_size,
+            tmp_gpr,
             tmp_xmm1,
             tmp_xmm2,
             srcloc,
@@ -1356,12 +1359,14 @@ fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
         Inst::CvtFloatToUintSeq {
             src,
             dst,
+            tmp_gpr,
             tmp_xmm1,
             tmp_xmm2,
             ..
         } => {
             collector.add_use(*src);
             collector.add_def(*dst);
+            collector.add_def(*tmp_gpr);
             collector.add_def(*tmp_xmm1);
             collector.add_def(*tmp_xmm2);
         }
@@ -1626,12 +1631,14 @@ fn x64_map_regs<RUM: RegUsageMapper>(inst: &mut Inst, mapper: &RUM) {
         Inst::CvtFloatToUintSeq {
             ref mut src,
             ref mut dst,
+            ref mut tmp_gpr,
             ref mut tmp_xmm1,
             ref mut tmp_xmm2,
             ..
         } => {
             map_use(mapper, src);
             map_def(mapper, dst);
+            map_def(mapper, tmp_gpr);
             map_def(mapper, tmp_xmm1);
             map_def(mapper, tmp_xmm2);
         }

@@ -1912,6 +1912,7 @@ pub(crate) fn emit(
             dst_size,
             src,
             dst,
+            tmp_gpr,
             tmp_xmm1,
             tmp_xmm2,
             srcloc,
@@ -1944,7 +1945,119 @@ pub(crate) fn emit(
             // add 2**(int_width -1), %dst
             //
             // done:
-            todo!()
+            let (sub_op, cast_op, cmp_op, trunc_op) = if *src_size == OperandSize::Size64 {
+                (
+                    SseOpcode::Subsd,
+                    SseOpcode::Movq,
+                    SseOpcode::Ucomisd,
+                    SseOpcode::Cvttsd2si,
+                )
+            } else {
+                (
+                    SseOpcode::Subss,
+                    SseOpcode::Movd,
+                    SseOpcode::Ucomiss,
+                    SseOpcode::Cvttss2si,
+                )
+            };
+
+            let done = sink.get_label();
+
+            if *src_size == OperandSize::Size64 {
+                let cst = Ieee64::pow2(63);
+                let inst = Inst::imm_r(true, cst.bits(), *tmp_gpr);
+                inst.emit(sink, flags, state);
+            } else {
+                let cst = Ieee32::pow2(31);
+                let inst = Inst::imm32_r_unchecked(cst.bits() as u64, *tmp_gpr);
+                inst.emit(sink, flags, state);
+            }
+            let inst = Inst::gpr_to_xmm(cast_op, RegMem::reg(tmp_gpr.to_reg()), *tmp_xmm1);
+            inst.emit(sink, flags, state);
+
+            let inst = Inst::xmm_cmp_rm_r(cmp_op, RegMem::reg(tmp_xmm1.to_reg()), *src);
+            inst.emit(sink, flags, state);
+
+            let handle_large = sink.get_label();
+            one_way_jmp(sink, CC::NB, handle_large); // jump to handle_large if src >= large_threshold
+
+            let next = sink.get_label();
+            one_way_jmp(sink, CC::NP, next); // jump over trap if not NaN
+
+            let inst = Inst::trap(*srcloc, TrapCode::BadConversionToInteger);
+            inst.emit(sink, flags, state);
+
+            sink.bind_label(next);
+
+            // Actual truncation for small inputs: if the result is not positive, then we had an
+            // overflow.
+
+            let inst = Inst::xmm_to_gpr(trunc_op, *src, *dst, *dst_size);
+            inst.emit(sink, flags, state);
+
+            let inst = Inst::cmp_rmi_r(dst_size.to_bytes(), RegMemImm::imm(0), dst.to_reg());
+            inst.emit(sink, flags, state);
+
+            one_way_jmp(sink, CC::NL, done); // if >= 0, jump to done
+
+            let inst = Inst::trap(*srcloc, TrapCode::IntegerOverflow);
+            inst.emit(sink, flags, state);
+
+            // Now handle large inputs.
+
+            sink.bind_label(handle_large);
+
+            // Copy the input to tmp_xmm2.
+            let inst = Inst::gen_move(
+                *tmp_xmm2,
+                *src,
+                if *src_size == OperandSize::Size32 {
+                    I32
+                } else {
+                    I64
+                },
+            );
+            inst.emit(sink, flags, state);
+
+            let inst = Inst::xmm_rm_r(sub_op, RegMem::reg(tmp_xmm1.to_reg()), *tmp_xmm2);
+            inst.emit(sink, flags, state);
+
+            let inst = Inst::xmm_to_gpr(trunc_op, tmp_xmm2.to_reg(), *dst, *dst_size);
+            inst.emit(sink, flags, state);
+
+            let inst = Inst::cmp_rmi_r(dst_size.to_bytes(), RegMemImm::imm(0), dst.to_reg());
+            inst.emit(sink, flags, state);
+
+            let next_is_large = sink.get_label();
+            one_way_jmp(sink, CC::NL, next_is_large); // if >= 0, jump to next_is_large
+
+            let inst = Inst::trap(*srcloc, TrapCode::IntegerOverflow);
+            inst.emit(sink, flags, state);
+
+            sink.bind_label(next_is_large);
+
+            if *dst_size == OperandSize::Size64 {
+                let inst = Inst::imm_r(true, 1 << 63, *tmp_gpr);
+                inst.emit(sink, flags, state);
+
+                let inst = Inst::alu_rmi_r(
+                    true,
+                    AluRmiROpcode::Add,
+                    RegMemImm::reg(tmp_gpr.to_reg()),
+                    *dst,
+                );
+                inst.emit(sink, flags, state);
+            } else {
+                let inst = Inst::alu_rmi_r(
+                    false,
+                    AluRmiROpcode::Add,
+                    RegMemImm::imm(1 << 31),
+                    *dst,
+                );
+                inst.emit(sink, flags, state);
+            }
+
+            sink.bind_label(done);
         }
 
         Inst::LoadExtName {
