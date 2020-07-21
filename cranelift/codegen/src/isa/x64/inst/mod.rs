@@ -250,7 +250,10 @@ pub enum Inst {
     CvtFloatToSintSeq {
         dst_size: OperandSize,
         src_size: OperandSize,
-        // TODO! explain or avoid the writable here
+        /// A copy of the source register, fed by lowering. It is marked as modified during
+        /// register allocation to make sure that the temporary xmm register differs from the src
+        /// register, since both registers are live at the same time in the generated code
+        /// sequence.
         src: Writable<Reg>,
         dst: Writable<Reg>,
         tmp_gpr: Writable<Reg>,
@@ -262,12 +265,14 @@ pub enum Inst {
     CvtFloatToUintSeq {
         src_size: OperandSize,
         dst_size: OperandSize,
-        // TODO! explain or avoid the writable here
+        /// A copy of the source register, fed by lowering, reused as a temporary. It is marked as
+        /// modified during register allocation to make sure that the temporary xmm register
+        /// differs from the src register, since both registers are live at the same time in the
+        /// generated code sequence.
         src: Writable<Reg>,
         dst: Writable<Reg>,
         tmp_gpr: Writable<Reg>,
-        tmp_xmm1: Writable<Reg>,
-        tmp_xmm2: Writable<Reg>,
+        tmp_xmm: Writable<Reg>,
         srcloc: SourceLoc,
     },
 
@@ -600,13 +605,11 @@ impl Inst {
         src: Writable<Reg>,
         dst: Writable<Reg>,
         tmp_gpr: Writable<Reg>,
-        tmp_xmm1: Writable<Reg>,
-        tmp_xmm2: Writable<Reg>,
+        tmp_xmm: Writable<Reg>,
         srcloc: SourceLoc,
     ) -> Inst {
         debug_assert!(src.to_reg().get_class() == RegClass::V128);
-        debug_assert!(tmp_xmm1.to_reg().get_class() == RegClass::V128);
-        debug_assert!(tmp_xmm2.to_reg().get_class() == RegClass::V128);
+        debug_assert!(tmp_xmm.to_reg().get_class() == RegClass::V128);
         debug_assert!(dst.to_reg().get_class() == RegClass::I64);
         Inst::CvtFloatToUintSeq {
             src,
@@ -614,8 +617,7 @@ impl Inst {
             src_size,
             dst_size,
             tmp_gpr,
-            tmp_xmm1,
-            tmp_xmm2,
+            tmp_xmm,
             srcloc,
         }
     }
@@ -1371,15 +1373,13 @@ fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
             src,
             dst,
             tmp_gpr,
-            tmp_xmm1,
-            tmp_xmm2,
+            tmp_xmm,
             ..
         } => {
             collector.add_mod(*src);
             collector.add_def(*dst);
             collector.add_def(*tmp_gpr);
-            collector.add_def(*tmp_xmm1);
-            collector.add_def(*tmp_xmm2);
+            collector.add_def(*tmp_xmm);
         }
         Inst::MovZX_RM_R { src, dst, .. } => {
             src.get_regs_as_uses(collector);
@@ -1643,15 +1643,13 @@ fn x64_map_regs<RUM: RegUsageMapper>(inst: &mut Inst, mapper: &RUM) {
             ref mut src,
             ref mut dst,
             ref mut tmp_gpr,
-            ref mut tmp_xmm1,
-            ref mut tmp_xmm2,
+            ref mut tmp_xmm,
             ..
         } => {
             map_mod(mapper, src);
             map_def(mapper, dst);
             map_def(mapper, tmp_gpr);
-            map_def(mapper, tmp_xmm1);
-            map_def(mapper, tmp_xmm2);
+            map_def(mapper, tmp_xmm);
         }
         Inst::MovZX_RM_R {
             ref mut src,

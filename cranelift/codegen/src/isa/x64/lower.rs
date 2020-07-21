@@ -1053,11 +1053,10 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
                     src_size, dst_size, src_copy, dst, tmp_xmm, tmp_gpr, srcloc,
                 ));
             } else {
-                let tmp_xmm1 = ctx.alloc_tmp(RegClass::V128, input_ty);
-                let tmp_xmm2 = ctx.alloc_tmp(RegClass::V128, input_ty);
+                let tmp_xmm = ctx.alloc_tmp(RegClass::V128, input_ty);
                 let tmp_gpr = ctx.alloc_tmp(RegClass::I64, output_ty);
                 ctx.emit(Inst::cvt_float_to_uint_seq(
-                    src_size, dst_size, src_copy, dst, tmp_gpr, tmp_xmm1, tmp_xmm2, srcloc,
+                    src_size, dst_size, src_copy, dst, tmp_gpr, tmp_xmm, srcloc,
                 ));
             }
         }

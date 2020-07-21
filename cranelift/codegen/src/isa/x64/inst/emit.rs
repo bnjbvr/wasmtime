@@ -1778,25 +1778,29 @@ pub(crate) fn emit(
             // Emits the following sequence:
             //
             // cvttss2si/cvttsd2si %src, %dst
-            // cmp dst, $INT_MIN
-            // jne done
+            // cmp $INT_MIN, %dst ;; 2 instructions (movaps + reg cmp) for 64-bits ints
+            // jnz done
             //
             // ;; check for NaN
             // cmpss/cmpsd %src, %src
             // jnp check_if_correct
-            // trap BadConversionToInteger
+            // ud2 trap BadConversionToInteger
             //
+            // ;; check if INT_MIN was the correct result, against a magic constant:
             // check_if_correct:
-            // ;; check if INT_MIN was the correct result
-            // cmpss/cmpsd INT_MIN, %src
-            // jnl/jnle $check_positive
-            // trap IntegerOverflow
+            // movaps/mov $magic, %tmp_gpr
+            // movq/movd %tmp_gpr, %tmp_xmm
+            // cmpss/cmpsd %tmp_xmm, %src
+            // jnb/jnbe $check_positive
+            // ud2 trap IntegerOverflow
             //
-            // check_positive:
             // ;; if positive, it was a real overflow
-            // cmpss/cmpsd 0.f, %src
-            // jnge done
-            // trap IntegerOverflow
+            // check_positive:
+            // mov 0, %tmp_gpr
+            // movd/movq %tmp_gpr, %tmp_xmm
+            // cmpss/cmpsd %src, %tmp_xmm
+            // jnb done
+            // ud2 trap IntegerOverflow
             //
             // done:
 
@@ -1885,19 +1889,10 @@ pub(crate) fn emit(
 
             sink.bind_label(check_positive);
 
-            match *src_size {
-                OperandSize::Size32 => {
-                    // TODO use xorps
-                    let inst =
-                        Inst::imm32_r_unchecked(Ieee32::with_float(0f32).bits() as u64, *tmp_gpr);
-                    inst.emit(sink, flags, state);
-                }
-                OperandSize::Size64 => {
-                    // TODO use xorpd
-                    let inst = Inst::imm_r(true, Ieee64::with_float(0.0).bits(), *tmp_gpr);
-                    inst.emit(sink, flags, state);
-                }
-            }
+            // TODO use xorpd
+            let inst = Inst::imm_r(false, 0, *tmp_gpr);
+            inst.emit(sink, flags, state);
+
             let inst =
                 Inst::gpr_to_xmm(cast_op, RegMem::reg(tmp_gpr.to_reg()), *src_size, *tmp_xmm);
             inst.emit(sink, flags, state);
@@ -1919,40 +1914,39 @@ pub(crate) fn emit(
             src,
             dst,
             tmp_gpr,
-            tmp_xmm1,
-            tmp_xmm2,
+            tmp_xmm,
             srcloc,
         } => {
             // Emits the following sequence:
             //
-            // f32const/f64const 2**(int_width - 1), %tmp_pow2nmi1
+            // movaps/mov 2**(int_width - 1), %tmp_gpr
+            // movq/movd %tmp_gpr, %tmp_xmm
             // cmpss/cmpsd %tmp_xmm, %src
-            // jge is_large
+            // jnb is_large
             //
             // ;; check for NaN inputs
             // jnp next
-            // trap BadConversionToInteger
+            // ud2 trap BadConversionToInteger
             //
             // next:
             // cvttss2si/cvttsd2si %src, %dst
             // cmp 0, %dst
-            // jge done
-            // trap IntegerOverflow
+            // jnl done
+            // ud2 trap IntegerOverflow
             //
             // is_large:
-            // movss/movsd %x, %tmp_x
-            // subss/subsd %tmp_pow2nmi1, %tmp_x
+            // subss/subsd %tmp_xmm, %src ; <-- we clobber %src here
             // cvttss2si/cvttss2sd %tmp_x, %dst
             // cmp 0, %dst
             // jnl next_is_large
-            // trap IntegerOverflow
+            // ud2 trap IntegerOverflow
             //
             // next_is_large:
-            // add 2**(int_width -1), %dst
+            // add 2**(int_width -1), %dst ;; 2 instructions for 64-bits integers
             //
             // done:
 
-            let src = src.to_reg();
+            assert!(tmp_xmm != src, "tmp_xmm clobbers src!");
 
             let (sub_op, cast_op, cmp_op, trunc_op) = if *src_size == OperandSize::Size64 {
                 (
@@ -1983,11 +1977,10 @@ pub(crate) fn emit(
             }
 
             let inst =
-                Inst::gpr_to_xmm(cast_op, RegMem::reg(tmp_gpr.to_reg()), *src_size, *tmp_xmm1);
+                Inst::gpr_to_xmm(cast_op, RegMem::reg(tmp_gpr.to_reg()), *src_size, *tmp_xmm);
             inst.emit(sink, flags, state);
 
-            assert!(tmp_xmm1.to_reg() != src, "tmp_xmm1 clobbers src!");
-            let inst = Inst::xmm_cmp_rm_r(cmp_op, RegMem::reg(tmp_xmm1.to_reg()), src);
+            let inst = Inst::xmm_cmp_rm_r(cmp_op, RegMem::reg(tmp_xmm.to_reg()), src.to_reg());
             inst.emit(sink, flags, state);
 
             let handle_large = sink.get_label();
@@ -2004,7 +1997,7 @@ pub(crate) fn emit(
             // Actual truncation for small inputs: if the result is not positive, then we had an
             // overflow.
 
-            let inst = Inst::xmm_to_gpr(trunc_op, src, *dst, *dst_size);
+            let inst = Inst::xmm_to_gpr(trunc_op, src.to_reg(), *dst, *dst_size);
             inst.emit(sink, flags, state);
 
             let inst = Inst::cmp_rmi_r(dst_size.to_bytes(), RegMemImm::imm(0), dst.to_reg());
@@ -2019,23 +2012,10 @@ pub(crate) fn emit(
 
             sink.bind_label(handle_large);
 
-            // Copy the input to tmp_xmm2.
-            debug_assert!(tmp_xmm2.to_reg() != src);
-            let inst = Inst::gen_move(
-                *tmp_xmm2,
-                src,
-                if *src_size == OperandSize::Size32 {
-                    F32
-                } else {
-                    F64
-                },
-            );
+            let inst = Inst::xmm_rm_r(sub_op, RegMem::reg(tmp_xmm.to_reg()), *src);
             inst.emit(sink, flags, state);
 
-            let inst = Inst::xmm_rm_r(sub_op, RegMem::reg(tmp_xmm1.to_reg()), *tmp_xmm2);
-            inst.emit(sink, flags, state);
-
-            let inst = Inst::xmm_to_gpr(trunc_op, tmp_xmm2.to_reg(), *dst, *dst_size);
+            let inst = Inst::xmm_to_gpr(trunc_op, src.to_reg(), *dst, *dst_size);
             inst.emit(sink, flags, state);
 
             let inst = Inst::cmp_rmi_r(dst_size.to_bytes(), RegMemImm::imm(0), dst.to_reg());
