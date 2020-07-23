@@ -1085,7 +1085,7 @@ pub(crate) fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             {
                 let condcode = inst_condcode(ctx.data(icmp_insn)).unwrap();
                 let cond = lower_condcode(condcode);
-                let is_signed = condcode_is_signed(condcode);
+                let is_signed = condcode.is_signed();
                 lower_icmp_or_ifcmp_to_flags(ctx, icmp_insn, is_signed);
                 cond
             } else if let Some(fcmp_insn) =
@@ -1131,7 +1131,7 @@ pub(crate) fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
         Opcode::Selectif | Opcode::SelectifSpectreGuard => {
             let condcode = inst_condcode(ctx.data(insn)).unwrap();
             let cond = lower_condcode(condcode);
-            let is_signed = condcode_is_signed(condcode);
+            let is_signed = condcode.is_signed();
             // Verification ensures that the input is always a
             // single-def ifcmp.
             let ifcmp_insn = maybe_input_insn(ctx, inputs[0], Opcode::Ifcmp).unwrap();
@@ -1201,7 +1201,7 @@ pub(crate) fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
         Opcode::Trueif => {
             let condcode = inst_condcode(ctx.data(insn)).unwrap();
             let cond = lower_condcode(condcode);
-            let is_signed = condcode_is_signed(condcode);
+            let is_signed = condcode.is_signed();
             // Verification ensures that the input is always a
             // single-def ifcmp.
             let ifcmp_insn = maybe_input_insn(ctx, inputs[0], Opcode::Ifcmp).unwrap();
@@ -1353,7 +1353,7 @@ pub(crate) fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
         Opcode::Icmp => {
             let condcode = inst_condcode(ctx.data(insn)).unwrap();
             let cond = lower_condcode(condcode);
-            let is_signed = condcode_is_signed(condcode);
+            let is_signed = condcode.is_signed();
             let rd = get_output_reg(ctx, outputs[0]);
             let ty = ctx.input_ty(insn, 0);
             let bits = ty_bits(ty);
@@ -1427,7 +1427,7 @@ pub(crate) fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             } else if op == Opcode::Trapif {
                 let condcode = inst_condcode(ctx.data(insn)).unwrap();
                 let cond = lower_condcode(condcode);
-                let is_signed = condcode_is_signed(condcode);
+                let is_signed = condcode.is_signed();
 
                 // Verification ensures that the input is always a single-def ifcmp.
                 let ifcmp_insn = maybe_input_insn(ctx, inputs[0], Opcode::Ifcmp).unwrap();
@@ -2237,7 +2237,7 @@ pub(crate) fn lower_branch<C: LowerCtx<I = Inst>>(
                 {
                     let condcode = inst_condcode(ctx.data(icmp_insn)).unwrap();
                     let cond = lower_condcode(condcode);
-                    let is_signed = condcode_is_signed(condcode);
+                    let is_signed = condcode.is_signed();
                     let negated = op0 == Opcode::Brz;
                     let cond = if negated { cond.invert() } else { cond };
 
@@ -2287,7 +2287,7 @@ pub(crate) fn lower_branch<C: LowerCtx<I = Inst>>(
                 let cond = lower_condcode(condcode);
                 let kind = CondBrKind::Cond(cond);
 
-                let is_signed = condcode_is_signed(condcode);
+                let is_signed = condcode.is_signed();
                 let ty = ctx.input_ty(branches[0], 0);
                 let bits = ty_bits(ty);
                 let narrow_mode = match (bits <= 32, is_signed) {
@@ -2328,7 +2328,7 @@ pub(crate) fn lower_branch<C: LowerCtx<I = Inst>>(
                 let cond = lower_condcode(condcode);
                 let kind = CondBrKind::Cond(cond);
 
-                let is_signed = condcode_is_signed(condcode);
+                let is_signed = condcode.is_signed();
                 let flag_input = InsnInput {
                     insn: branches[0],
                     input: 0,
