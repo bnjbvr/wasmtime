@@ -1094,20 +1094,16 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
                 I8 | I16 | I32 => {
                     // Conversion from an unsigned int smaller than 64-bit is easy: zero-extend +
                     // do a signed conversion (which won't overflow).
-                    let (ext_spec, opcode) = if ty == F32 {
-                        (ExtSpec::ZeroExtendTo32, SseOpcode::Cvtsi2ss)
+                    let opcode = if ty == F32 {
+                        SseOpcode::Cvtsi2ss
                     } else {
                         assert_eq!(ty, F64);
-                        (ExtSpec::ZeroExtendTo64, SseOpcode::Cvtsi2sd)
+                        SseOpcode::Cvtsi2sd
                     };
 
-                    let src = if input_ty == I32 {
-                        input_to_reg_mem(ctx, inputs[0])
-                    } else {
-                        RegMem::reg(extend_input_to_reg(ctx, inputs[0], ext_spec))
-                    };
-
-                    ctx.emit(Inst::gpr_to_xmm(opcode, src, OperandSize::Size32, dst));
+                    let src =
+                        RegMem::reg(extend_input_to_reg(ctx, inputs[0], ExtSpec::ZeroExtendTo64));
+                    ctx.emit(Inst::gpr_to_xmm(opcode, src, OperandSize::Size64, dst));
                 }
 
                 I64 => {

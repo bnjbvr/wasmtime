@@ -1072,7 +1072,7 @@ impl ShowWithRRU for Inst {
                     "u64_to_{}_seq",
                     if *to_f64 { "f64" } else { "f32" }
                 )),
-                src.show_rru_sized(mb_rru, 8),
+                show_ireg_sized(*src, mb_rru, 8),
                 dst.show_rru(mb_rru),
             ),
 
