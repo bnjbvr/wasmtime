@@ -190,9 +190,6 @@ pub trait MachInst: Clone + Debug {
     /// the instruction must have a nonzero size.
     fn gen_nop(preferred_size: usize) -> Self;
 
-    /// Get the register universe for this backend.
-    fn reg_universe(flags: &Flags) -> RealRegUniverse;
-
     /// Align a basic block offset (from start of function).  By default, no
     /// alignment occurs.
     fn align_basic_block(offset: CodeOffset) -> CodeOffset {

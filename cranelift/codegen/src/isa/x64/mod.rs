@@ -2,7 +2,7 @@
 
 use super::TargetIsa;
 use crate::ir::{condcodes::IntCC, Function};
-use crate::isa::x64::{inst::regs::create_reg_universe_systemv, settings as x64_settings};
+use crate::isa::x64::{inst::regs::create_reg_universe, settings as x64_settings};
 use crate::isa::Builder as IsaBuilder;
 use crate::machinst::{
     compile, pretty_print::ShowWithRRU, MachBackend, MachCompileResult, TargetIsaAdapter, VCode,
@@ -12,6 +12,7 @@ use crate::settings::{self as shared_settings, Flags};
 use alloc::boxed::Box;
 use regalloc::RealRegUniverse;
 use target_lexicon::Triple;
+use inst::regs::X86Universe;
 
 mod abi;
 mod inst;
@@ -23,18 +24,18 @@ pub(crate) struct X64Backend {
     triple: Triple,
     flags: Flags,
     _x64_flags: x64_settings::Flags,
-    reg_universe: RealRegUniverse,
+    regs: X86Universe,
 }
 
 impl X64Backend {
     /// Create a new X64 backend with the given (shared) flags.
     fn new_with_flags(triple: Triple, flags: Flags, x64_flags: x64_settings::Flags) -> Self {
-        let reg_universe = create_reg_universe_systemv(&flags);
+        let regs = create_reg_universe(&flags);
         Self {
             triple,
             flags,
             _x64_flags: x64_flags,
-            reg_universe,
+            regs,
         }
     }
 
@@ -52,14 +53,13 @@ impl MachBackend for X64Backend {
         func: &Function,
         want_disasm: bool,
     ) -> CodegenResult<MachCompileResult> {
-        let flags = self.flags();
-        let vcode = self.compile_vcode(func, flags.clone())?;
+        let vcode = self.compile_vcode(func, self.flags().clone())?;
         let buffer = vcode.emit();
         let buffer = buffer.finish();
         let frame_size = vcode.frame_size();
 
         let disasm = if want_disasm {
-            Some(vcode.show_rru(Some(&create_reg_universe_systemv(flags))))
+            Some(vcode.show_rru(Some(&self.regs.reg_universe())))
         } else {
             None
         };
@@ -84,7 +84,7 @@ impl MachBackend for X64Backend {
     }
 
     fn reg_universe(&self) -> &RealRegUniverse {
-        &self.reg_universe
+        self.regs.reg_universe()
     }
 
     fn unsigned_add_overflow_condition(&self) -> IntCC {
