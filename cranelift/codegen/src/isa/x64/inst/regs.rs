@@ -15,27 +15,28 @@ use alloc::vec::Vec;
 use regalloc::{RealReg, RealRegUniverse, Reg, RegClass, RegClassInfo, NUM_REG_CLASSES};
 use std::string::String;
 
-// Hardware encodings for a few registers.
+/// Hardware encodings for general-purpose registers.
+pub(crate) enum Enc {
+    Rax = 0,
+    Rcx = 1,
+    Rdx = 2,
+    Rbx = 3,
+    Rsp = 4,
+    Rbp = 5,
+    Rsi = 6,
+    Rdi = 7,
+    R8 = 8,
+    R9 = 9,
+    R10 = 10,
+    R11 = 11,
+    R12 = 12,
+    R13 = 13,
+    R14 = 14,
+    R15 = 15,
+}
 
-const ENC_RAX: u8 = 0;
-const ENC_RCX: u8 = 1;
-const ENC_RDX: u8 = 2;
-pub const ENC_RBX: u8 = 3;
-pub const ENC_RSP: u8 = 4;
-pub const ENC_RBP: u8 = 5;
-const ENC_RSI: u8 = 6;
-const ENC_RDI: u8 = 7;
-const ENC_R8: u8 = 8;
-const ENC_R9: u8 = 9;
-const ENC_R10: u8 = 10;
-const ENC_R11: u8 = 11;
-pub const ENC_R12: u8 = 12;
-pub const ENC_R13: u8 = 13;
-pub const ENC_R14: u8 = 14;
-pub const ENC_R15: u8 = 15;
-
-fn gpr(enc: u8, index: u8) -> Reg {
-    Reg::new_real(RegClass::I64, enc, index)
+fn gpr(enc: Enc, index: u8) -> Reg {
+    Reg::new_real(RegClass::I64, enc as u8, index)
 }
 
 fn fpr(enc: u8, index: u8) -> Reg {
@@ -45,6 +46,7 @@ fn fpr(enc: u8, index: u8) -> Reg {
 pub(crate) struct X86Universe {
     gpr_to_reg_index: [usize; 16],
     universe: RealRegUniverse,
+    use_pinned_reg: bool,
 }
 
 impl X86Universe {
@@ -80,19 +82,20 @@ impl X86Universe {
         };
 
         // Allocatable GPR: first all the callee-saved, then all the caller-saved.
+        use Enc::*;
         if use_pinned_reg {
             for &enc in &[
                 // Callee-saved:
-                ENC_R12, ENC_R13, ENC_R14, ENC_RBX, // Then the caller-saved:
-                ENC_RSI, ENC_RDI, ENC_RAX, ENC_RCX, ENC_RDX, ENC_R8, ENC_R9, ENC_R10, ENC_R11,
+                R12, R13, R14, R15, Rbx, // Then the caller-saved:
+                Rsi, Rdi, Rax, Rcx, Rdx, R8, R9, R10, R11,
             ] {
                 add_gpr(enc);
             }
         } else {
             for &enc in &[
                 // Callee-saved:
-                ENC_R12, ENC_R13, ENC_R14, ENC_R15, ENC_RBX, // Then the caller-saved:
-                ENC_RSI, ENC_RDI, ENC_RAX, ENC_RCX, ENC_RDX, ENC_R8, ENC_R9, ENC_R10, ENC_R11,
+                R12, R13, R14, R15, Rbx, // Then the caller-saved:
+                Rsi, Rdi, Rax, Rcx, Rdx, R8, R9, R10, R11,
             ] {
                 add_gpr(enc);
             }
@@ -101,7 +104,7 @@ impl X86Universe {
         allocable_by_class[RegClass::I64.rc_to_usize()] = Some(RegClassInfo {
             first: first_gpr,
             last: regs.len() - 1,
-            suggested_scratch: Some(gpr_to_reg_index[ENC_R12 as usize]),
+            suggested_scratch: Some(gpr_to_reg_index[R12 as usize]),
         });
 
         let allocable = regs.len();
@@ -109,12 +112,12 @@ impl X86Universe {
         // Non-allocatable registers:
         if use_pinned_reg {
             regs.push((
-                gpr(ENC_R15, regs.len() as u8).to_real_reg(),
+                gpr(R15, regs.len() as u8).to_real_reg(),
                 "r15/pinned".into(),
             ));
         }
 
-        for &enc in &[ENC_RSP, ENC_RBP] {
+        for &enc in &[Rsp, Rbp] {
             let index = regs.len();
             gpr_to_reg_index[enc as usize] = index;
             regs.push((
@@ -132,17 +135,51 @@ impl X86Universe {
         Self {
             gpr_to_reg_index,
             universe,
+            use_pinned_reg,
         }
+    }
+
+    pub(crate) fn reg_universe(&self) -> &RealRegUniverse {
+        &self.universe
     }
 
     pub(crate) fn xmm(&self, index: usize) -> Reg {
         fpr(index as u8, index as u8)
     }
-    pub(crate) fn gpr(&self, enc: usize) -> Reg {
-        self.universe.regs[self.gpr_to_reg_index[enc]].0.to_reg()
+
+    #[inline(always)]
+    fn gpr(&self, enc: Enc) -> Reg {
+        self.universe.regs[self.gpr_to_reg_index[enc as usize]]
+            .0
+            .to_reg()
     }
-    pub(crate) fn reg_universe(&self) -> &RealRegUniverse {
-        &self.universe
+    #[inline(always)]
+    pub(crate) fn rax(&self) -> Reg {
+        self.gpr(Enc::Rax)
+    }
+    #[inline(always)]
+    pub(crate) fn rdx(&self) -> Reg {
+        self.gpr(Enc::Rdx)
+    }
+    #[inline(always)]
+    pub(crate) fn rcx(&self) -> Reg {
+        self.gpr(Enc::Rcx)
+    }
+    #[inline(always)]
+    pub(crate) fn r9(&self) -> Reg {
+        self.gpr(Enc::R9)
+    }
+    #[inline(always)]
+    pub(crate) fn r10(&self) -> Reg {
+        self.gpr(Enc::R10)
+    }
+
+    pub(crate) fn pinned_reg(&self) -> Option<Reg> {
+        if self.use_pinned_reg {
+            Some(self.gpr(Enc::R15))
+        } else {
+            None
+        }
     }
 }
 
@@ -151,111 +188,6 @@ static GPR_NAMES: &[&'static str; 16] = &[
     "%rax", "%rcx", "%rdx", "%rbx", "%rsp", "%rbp", "%rsi", "%rdi", "%r8", "%r9", "%r10", "%r11",
     "%r12", "%r13", "%r14", "%r15",
 ];
-
-pub(crate) fn r12() -> Reg {
-    gpr(ENC_R12, 16)
-}
-pub(crate) fn r13() -> Reg {
-    gpr(ENC_R13, 17)
-}
-pub(crate) fn r14() -> Reg {
-    gpr(ENC_R14, 18)
-}
-pub(crate) fn rbx() -> Reg {
-    gpr(ENC_RBX, 19)
-}
-pub(crate) fn rsi() -> Reg {
-    gpr(ENC_RSI, 20)
-}
-pub(crate) fn rdi() -> Reg {
-    gpr(ENC_RDI, 21)
-}
-pub(crate) fn rax() -> Reg {
-    gpr(ENC_RAX, 22)
-}
-pub(crate) fn rcx() -> Reg {
-    gpr(ENC_RCX, 23)
-}
-pub(crate) fn rdx() -> Reg {
-    gpr(ENC_RDX, 24)
-}
-pub(crate) fn r8() -> Reg {
-    gpr(ENC_R8, 25)
-}
-pub(crate) fn r9() -> Reg {
-    gpr(ENC_R9, 26)
-}
-pub(crate) fn r10() -> Reg {
-    gpr(ENC_R10, 27)
-}
-pub(crate) fn r11() -> Reg {
-    gpr(ENC_R11, 28)
-}
-
-pub(crate) fn r15() -> Reg {
-    // r15 is put aside since this is the pinned register.
-    gpr(ENC_R15, 29)
-}
-
-pub(crate) fn pinned_reg() -> Reg {
-    r15()
-}
-
-pub(crate) fn xmm0() -> Reg {
-    fpr(0, 0)
-}
-pub(crate) fn xmm1() -> Reg {
-    fpr(1, 1)
-}
-pub(crate) fn xmm2() -> Reg {
-    fpr(2, 2)
-}
-pub(crate) fn xmm3() -> Reg {
-    fpr(3, 3)
-}
-pub(crate) fn xmm4() -> Reg {
-    fpr(4, 4)
-}
-pub(crate) fn xmm5() -> Reg {
-    fpr(5, 5)
-}
-pub(crate) fn xmm6() -> Reg {
-    fpr(6, 6)
-}
-pub(crate) fn xmm7() -> Reg {
-    fpr(7, 7)
-}
-pub(crate) fn xmm8() -> Reg {
-    fpr(8, 8)
-}
-pub(crate) fn xmm9() -> Reg {
-    fpr(9, 9)
-}
-pub(crate) fn xmm10() -> Reg {
-    fpr(10, 10)
-}
-pub(crate) fn xmm11() -> Reg {
-    fpr(11, 11)
-}
-pub(crate) fn xmm12() -> Reg {
-    fpr(12, 12)
-}
-pub(crate) fn xmm13() -> Reg {
-    fpr(13, 13)
-}
-pub(crate) fn xmm14() -> Reg {
-    fpr(14, 14)
-}
-pub(crate) fn xmm15() -> Reg {
-    fpr(15, 15)
-}
-
-pub(crate) fn rsp() -> Reg {
-    gpr(ENC_RSP, 30)
-}
-pub(crate) fn rbp() -> Reg {
-    gpr(ENC_RBP, 31)
-}
 
 /// Create the register universe for X64.
 ///

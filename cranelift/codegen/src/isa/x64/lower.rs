@@ -22,6 +22,7 @@ use regalloc::{Reg, RegClass, Writable};
 use smallvec::SmallVec;
 use std::convert::TryFrom;
 use target_lexicon::Triple;
+use regs::X86Universe;
 
 /// Context passed to all lowering functions.
 type Ctx<'a> = &'a mut dyn LowerCtx<I = Inst>;
@@ -472,6 +473,7 @@ fn lower_to_amode<C: LowerCtx<I = Inst>>(ctx: &mut C, spec: InsnInput, offset: i
 /// Actually codegen an instruction's results into registers.
 fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
     ctx: &mut C,
+    regs: &X86Universe,
     insn: IRInst,
     flags: &Flags,
     triple: &Triple,
@@ -809,7 +811,7 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
                 _ => unreachable!(),
             };
 
-            let w_rcx = Writable::from_reg(regs::rcx());
+            let w_rcx = Writable::from_reg(regs.rcx());
             ctx.emit(Inst::mov_r_r(true, lhs, dst));
             if count.is_none() {
                 ctx.emit(Inst::mov_r_r(true, rhs.unwrap(), w_rcx));
@@ -2187,12 +2189,12 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             // operates at whatever width is specified by `ty`, so there's no need to
             // zero-extend `arg2` in the case of `ty` being I8/I16/I32.
             ctx.emit(Inst::gen_move(
-                Writable::from_reg(regs::r9()),
+                Writable::from_reg(regs.r9()),
                 addr,
                 types::I64,
             ));
             ctx.emit(Inst::gen_move(
-                Writable::from_reg(regs::r10()),
+                Writable::from_reg(regs.r10()),
                 arg2,
                 types::I64,
             ));
@@ -2206,7 +2208,7 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             });
 
             // And finally, copy the preordained AtomicRmwSeq output reg to its destination.
-            ctx.emit(Inst::gen_move(dst, regs::rax(), types::I64));
+            ctx.emit(Inst::gen_move(dst, regs.rax(), types::I64));
         }
 
         Opcode::AtomicCas => {
@@ -2229,7 +2231,7 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             // the input side, we don't have to use `ensure_in_vreg`, as is necessary in the
             // `AtomicRmw` case.
             ctx.emit(Inst::gen_move(
-                Writable::from_reg(regs::rax()),
+                Writable::from_reg(regs.rax()),
                 expected,
                 types::I64,
             ));
@@ -2240,7 +2242,7 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
                 srcloc,
             });
             // And finally, copy the old value at the location to its destination reg.
-            ctx.emit(Inst::gen_move(dst, regs::rax(), types::I64));
+            ctx.emit(Inst::gen_move(dst, regs.rax(), types::I64));
         }
 
         Opcode::AtomicLoad => {
@@ -2503,7 +2505,7 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
 
             let srcloc = ctx.srcloc(insn);
             ctx.emit(Inst::gen_move(
-                Writable::from_reg(regs::rax()),
+                Writable::from_reg(regs.rax()),
                 dividend,
                 input_ty,
             ));
@@ -2530,7 +2532,7 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
                 ctx.emit(Inst::imm(
                     OperandSize::Size32,
                     0,
-                    Writable::from_reg(regs::rdx()),
+                    Writable::from_reg(regs.rdx()),
                 ));
                 ctx.emit(Inst::checked_div_or_rem_seq(
                     kind,
@@ -2550,8 +2552,8 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
                 } else if input_ty == types::I8 {
                     ctx.emit(Inst::movzx_rm_r(
                         ExtMode::BL,
-                        RegMem::reg(regs::rax()),
-                        Writable::from_reg(regs::rax()),
+                        RegMem::reg(regs.rax()),
+                        Writable::from_reg(regs.rax()),
                         /* infallible */ None,
                     ));
                 } else {
@@ -2559,7 +2561,7 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
                     ctx.emit(Inst::imm(
                         OperandSize::Size64,
                         0,
-                        Writable::from_reg(regs::rdx()),
+                        Writable::from_reg(regs.rdx()),
                     ));
                 }
 
@@ -2570,10 +2572,10 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             // Move the result back into the destination reg.
             if is_div {
                 // The quotient is in rax.
-                ctx.emit(Inst::gen_move(dst, regs::rax(), input_ty));
+                ctx.emit(Inst::gen_move(dst, regs.rax(), input_ty));
             } else {
                 // The remainder is in rdx.
-                ctx.emit(Inst::gen_move(dst, regs::rdx(), input_ty));
+                ctx.emit(Inst::gen_move(dst, regs.rdx(), input_ty));
             }
         }
 
@@ -2587,7 +2589,7 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
 
             // Move lhs in %rax.
             ctx.emit(Inst::gen_move(
-                Writable::from_reg(regs::rax()),
+                Writable::from_reg(regs.rax()),
                 lhs,
                 input_ty,
             ));
@@ -2597,18 +2599,18 @@ fn lower_insn_to_regs<C: LowerCtx<I = Inst>>(
             ctx.emit(Inst::mul_hi(size, signed, rhs));
 
             // Read the result from the high part (stored in %rdx).
-            ctx.emit(Inst::gen_move(dst, regs::rdx(), input_ty));
+            ctx.emit(Inst::gen_move(dst, regs.rdx(), input_ty));
         }
 
         Opcode::GetPinnedReg => {
             let dst = get_output_reg(ctx, outputs[0]);
-            ctx.emit(Inst::gen_move(dst, regs::pinned_reg(), types::I64));
+            ctx.emit(Inst::gen_move(dst, regs.pinned_reg().unwrap(), types::I64));
         }
 
         Opcode::SetPinnedReg => {
             let src = put_input_in_reg(ctx, inputs[0]);
             ctx.emit(Inst::gen_move(
-                Writable::from_reg(regs::pinned_reg()),
+                Writable::from_reg(regs.pinned_reg().unwrap()),
                 src,
                 types::I64,
             ));
@@ -2680,7 +2682,7 @@ impl LowerBackend for X64Backend {
     type MInst = Inst;
 
     fn lower<C: LowerCtx<I = Inst>>(&self, ctx: &mut C, ir_inst: IRInst) -> CodegenResult<()> {
-        lower_insn_to_regs(ctx, ir_inst, &self.flags, &self.triple)
+        lower_insn_to_regs(ctx, &self.regs, ir_inst, &self.flags, &self.triple)
     }
 
     fn lower_branch_group<C: LowerCtx<I = Inst>>(
@@ -2886,6 +2888,6 @@ impl LowerBackend for X64Backend {
     }
 
     fn maybe_pinned_reg(&self) -> Option<Reg> {
-        Some(regs::pinned_reg())
+        self.regs.pinned_reg()
     }
 }

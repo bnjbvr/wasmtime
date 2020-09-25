@@ -24,7 +24,7 @@ mod emit_tests;
 pub mod regs;
 
 use args::*;
-use regs::show_ireg_sized;
+use regs::{X86Universe, show_ireg_sized};
 
 //=============================================================================
 // Instructions (top level): definition
@@ -1655,7 +1655,7 @@ impl fmt::Debug for Inst {
     }
 }
 
-fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
+fn x64_get_regs(regs: &X86Universe, inst: &Inst, collector: &mut RegUsageCollector) {
     // This is a bit subtle. If some register is in the modified set, then it may not be in either
     // the use or def sets. However, enforcing that directly is somewhat difficult. Instead,
     // regalloc.rs will "fix" this for us by removing the the modified set from the use and def
