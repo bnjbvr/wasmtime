@@ -4,7 +4,7 @@ use crate::ir::condcodes::IntCC;
 use crate::ir::Function;
 use crate::isa::Builder as IsaBuilder;
 use crate::machinst::{
-    compile, MachBackend, MachCompileResult, ShowWithRRU, TargetIsaAdapter, VCode,
+    compile, regalloc::PrettyPrint, MachBackend, MachCompileResult, TargetIsaAdapter, VCode,
 };
 use crate::result::CodegenResult;
 use crate::settings;

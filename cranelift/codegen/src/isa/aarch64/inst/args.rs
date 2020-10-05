@@ -348,19 +348,19 @@ impl BranchTarget {
     }
 }
 
-impl ShowWithRRU for ShiftOpAndAmt {
+impl regalloc::PrettyPrint for ShiftOpAndAmt {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         format!("{:?} {}", self.op(), self.amt().value())
     }
 }
 
-impl ShowWithRRU for ExtendOp {
+impl regalloc::PrettyPrint for ExtendOp {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         format!("{:?}", self)
     }
 }
 
-impl ShowWithRRU for MemLabel {
+impl regalloc::PrettyPrint for MemLabel {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         match self {
             &MemLabel::PCRel(off) => format!("pc+{}", off),
@@ -379,7 +379,7 @@ fn shift_for_type(ty: Type) -> usize {
     }
 }
 
-impl ShowWithRRU for AMode {
+impl regalloc::PrettyPrint for AMode {
     fn show_rru(&self, mb_rru: Option<&RealRegUniverse>) -> String {
         match self {
             &AMode::Unscaled(reg, simm9) => {
@@ -458,7 +458,7 @@ impl ShowWithRRU for AMode {
     }
 }
 
-impl ShowWithRRU for PairAMode {
+impl regalloc::PrettyPrint for PairAMode {
     fn show_rru(&self, mb_rru: Option<&RealRegUniverse>) -> String {
         match self {
             &PairAMode::SignedOffset(reg, simm7) => {
@@ -482,7 +482,11 @@ impl ShowWithRRU for PairAMode {
     }
 }
 
-impl ShowWithRRU for Cond {
+impl regalloc::PrettyPrintSized for PairAMode {
+    // For now, use the default implementation and ignore the size hint.
+}
+
+impl regalloc::PrettyPrint for Cond {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         let mut s = format!("{:?}", self);
         s.make_ascii_lowercase();
@@ -490,7 +494,7 @@ impl ShowWithRRU for Cond {
     }
 }
 
-impl ShowWithRRU for BranchTarget {
+impl regalloc::PrettyPrint for BranchTarget {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         match self {
             &BranchTarget::Label(label) => format!("label{:?}", label.get()),

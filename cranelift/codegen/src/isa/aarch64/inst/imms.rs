@@ -5,7 +5,6 @@
 use crate::ir::types::*;
 use crate::ir::Type;
 use crate::isa::aarch64::inst::OperandSize;
-use crate::machinst::*;
 
 use regalloc::RealRegUniverse;
 
@@ -668,7 +667,7 @@ impl MoveWideConst {
     }
 }
 
-impl ShowWithRRU for NZCV {
+impl regalloc::PrettyPrint for NZCV {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         let fmt = |c: char, v| if v { c.to_ascii_uppercase() } else { c };
         format!(
@@ -681,13 +680,13 @@ impl ShowWithRRU for NZCV {
     }
 }
 
-impl ShowWithRRU for UImm5 {
+impl regalloc::PrettyPrint for UImm5 {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         format!("#{}", self.value)
     }
 }
 
-impl ShowWithRRU for Imm12 {
+impl regalloc::PrettyPrint for Imm12 {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         let shift = if self.shift12 { 12 } else { 0 };
         let value = u32::from(self.bits) << shift;
@@ -695,49 +694,49 @@ impl ShowWithRRU for Imm12 {
     }
 }
 
-impl ShowWithRRU for SImm7Scaled {
+impl regalloc::PrettyPrint for SImm7Scaled {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         format!("#{}", self.value)
     }
 }
 
-impl ShowWithRRU for FPULeftShiftImm {
+impl regalloc::PrettyPrint for FPULeftShiftImm {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         format!("#{}", self.amount)
     }
 }
 
-impl ShowWithRRU for FPURightShiftImm {
+impl regalloc::PrettyPrint for FPURightShiftImm {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         format!("#{}", self.amount)
     }
 }
 
-impl ShowWithRRU for SImm9 {
+impl regalloc::PrettyPrint for SImm9 {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         format!("#{}", self.value)
     }
 }
 
-impl ShowWithRRU for UImm12Scaled {
+impl regalloc::PrettyPrint for UImm12Scaled {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         format!("#{}", self.value)
     }
 }
 
-impl ShowWithRRU for ImmLogic {
+impl regalloc::PrettyPrint for ImmLogic {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         format!("#{}", self.value())
     }
 }
 
-impl ShowWithRRU for ImmShift {
+impl regalloc::PrettyPrint for ImmShift {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         format!("#{}", self.imm)
     }
 }
 
-impl ShowWithRRU for MoveWideConst {
+impl regalloc::PrettyPrint for MoveWideConst {
     fn show_rru(&self, _mb_rru: Option<&RealRegUniverse>) -> String {
         if self.shift == 0 {
             format!("#{}", self.bits)

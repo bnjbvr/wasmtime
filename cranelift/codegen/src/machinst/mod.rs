@@ -125,8 +125,6 @@ pub mod abi;
 pub use abi::*;
 pub mod abi_impl;
 pub use abi_impl::*;
-pub mod pretty_print;
-pub use pretty_print::*;
 pub mod buffer;
 pub use buffer::*;
 pub mod adapter;

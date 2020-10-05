@@ -897,7 +897,7 @@ fn mem_finalize_for_show(
     (mem_str, mem)
 }
 
-impl ShowWithRRU for Inst {
+impl regalloc::PrettyPrint for Inst {
     fn show_rru(&self, mb_rru: Option<&RealRegUniverse>) -> String {
         self.pretty_print(mb_rru, &mut EmitState::default())
     }

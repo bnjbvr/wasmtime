@@ -624,12 +624,12 @@ impl<I: VCodeInst> fmt::Debug for VCode<I> {
 }
 
 /// Pretty-printing with `RealRegUniverse` context.
-impl<I: VCodeInst> ShowWithRRU for VCode<I> {
+impl<I: VCodeInst> regalloc::PrettyPrint for VCode<I> {
     fn show_rru(&self, mb_rru: Option<&RealRegUniverse>) -> String {
         use std::fmt::Write;
 
         let mut s = String::new();
-        write!(&mut s, "VCode_ShowWithRRU {{{{\n").unwrap();
+        write!(&mut s, "VCode_regalloc::PrettyPrint {{{{\n").unwrap();
         write!(&mut s, "  Entry block: {}\n", self.entry).unwrap();
 
         let mut state = Default::default();
