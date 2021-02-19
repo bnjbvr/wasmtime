@@ -23,7 +23,7 @@ use smallvec::{smallvec, SmallVec};
 pub(crate) type AArch64ABICallee = ABICalleeImpl<AArch64MachineDeps>;
 
 /// Support for the AArch64 ABI from the caller side (at a callsite).
-pub(crate) type AArch64ABICaller = ABICallerImpl<AArch64MachineDeps>;
+pub(crate) type AArch64ABICaller<'a> = ABICallerImpl<'a, AArch64MachineDeps>;
 
 // Spidermonkey specific ABI convention.
 
@@ -160,6 +160,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
     }
 
     fn compute_arg_locs(
+        _: &(),
         call_conv: isa::CallConv,
         params: &[ir::AbiParam],
         args_or_rets: ArgsOrRets,
@@ -328,11 +329,11 @@ impl ABIMachineSpec for AArch64MachineDeps {
         }
     }
 
-    fn gen_load_stack(mem: StackAMode, into_reg: Writable<Reg>, ty: Type) -> Inst {
+    fn gen_load_stack(_: &(), mem: StackAMode, into_reg: Writable<Reg>, ty: Type) -> Inst {
         Inst::gen_load(into_reg, mem.into(), ty, MemFlags::trusted())
     }
 
-    fn gen_store_stack(mem: StackAMode, from_reg: Reg, ty: Type) -> Inst {
+    fn gen_store_stack(_: &(), mem: StackAMode, from_reg: Reg, ty: Type) -> Inst {
         Inst::gen_store(mem.into(), from_reg, ty, MemFlags::trusted())
     }
 
@@ -386,7 +387,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
         insts
     }
 
-    fn gen_stack_lower_bound_trap(limit_reg: Reg) -> SmallInstVec<Inst> {
+    fn gen_stack_lower_bound_trap(_: &(), limit_reg: Reg) -> SmallInstVec<Inst> {
         let mut insts = SmallVec::new();
         insts.push(Inst::AluRRRExtend {
             alu_op: ALUOp::SubS64,
@@ -408,12 +409,12 @@ impl ABIMachineSpec for AArch64MachineDeps {
         Inst::EpiloguePlaceholder
     }
 
-    fn gen_get_stack_addr(mem: StackAMode, into_reg: Writable<Reg>, _ty: Type) -> Inst {
+    fn gen_get_stack_addr(_: &(), mem: StackAMode, into_reg: Writable<Reg>, _ty: Type) -> Inst {
         let mem = mem.into();
         Inst::LoadAddr { rd: into_reg, mem }
     }
 
-    fn get_stacklimit_reg() -> Reg {
+    fn get_stacklimit_reg(_: &()) -> Reg {
         spilltmp_reg()
     }
 
@@ -427,7 +428,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
         Inst::gen_store(mem, from_reg, ty, MemFlags::trusted())
     }
 
-    fn gen_sp_reg_adjust(amount: i32) -> SmallInstVec<Inst> {
+    fn gen_sp_reg_adjust(_: &(), amount: i32) -> SmallInstVec<Inst> {
         if amount == 0 {
             return SmallVec::new();
         }
@@ -471,7 +472,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
         }
     }
 
-    fn gen_prologue_frame_setup() -> SmallInstVec<Inst> {
+    fn gen_prologue_frame_setup(_: &()) -> SmallInstVec<Inst> {
         let mut insts = SmallVec::new();
         // stp fp (x29), lr (x30), [sp, #-16]!
         insts.push(Inst::StoreP64 {
@@ -497,7 +498,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
         insts
     }
 
-    fn gen_epilogue_frame_restore() -> SmallInstVec<Inst> {
+    fn gen_epilogue_frame_restore(_: &()) -> SmallInstVec<Inst> {
         let mut insts = SmallVec::new();
 
         // MOV (alias of ORR) interprets x31 as XZR, so use an ADD here.
@@ -524,7 +525,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
         insts
     }
 
-    fn gen_probestack(_: u32) -> SmallInstVec<Self::I> {
+    fn gen_probestack(_: &(), _: u32) -> SmallInstVec<Self::I> {
         // TODO: implement if we ever require stack probes on an AArch64 host
         // (unlikely unless Lucet is ported)
         smallvec![]
@@ -533,6 +534,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
     // Returns stack bytes used as well as instructions. Does not adjust
     // nominal SP offset; abi_impl generic code will do that.
     fn gen_clobber_save(
+        _: &(),
         call_conv: isa::CallConv,
         _: &settings::Flags,
         clobbers: &Set<Writable<RealReg>>,
@@ -545,6 +547,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
         let (int_save_bytes, vec_save_bytes) = saved_reg_stack_size(&clobbered_int, &clobbered_vec);
         let total_save_bytes = (vec_save_bytes + int_save_bytes) as i32;
         insts.extend(Self::gen_sp_reg_adjust(
+            &(),
             -(total_save_bytes + fixed_frame_storage_size as i32),
         ));
 
@@ -587,6 +590,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
     }
 
     fn gen_clobber_restore(
+        _: &(),
         call_conv: isa::CallConv,
         flags: &settings::Flags,
         clobbers: &Set<Writable<RealReg>>,
@@ -638,7 +642,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
         // can skip restoring the stack pointer value with this `add`.
         if call_conv.extends_baldrdash() {
             let total_save_bytes = (int_save_bytes + vec_save_bytes) as i32;
-            insts.extend(Self::gen_sp_reg_adjust(total_save_bytes));
+            insts.extend(Self::gen_sp_reg_adjust(&(), total_save_bytes));
         }
 
         // If this is Baldrdash-2020, restore the callee (i.e., our) TLS
@@ -723,6 +727,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
     }
 
     fn gen_memcpy(
+        _: &(),
         call_conv: isa::CallConv,
         dst: Reg,
         src: Reg,
@@ -741,7 +746,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
             info: Box::new(CallInfo {
                 dest: ExternalName::LibCall(LibCall::Memcpy),
                 uses: vec![arg0.to_reg(), arg1.to_reg(), arg2.to_reg()],
-                defs: Self::get_regs_clobbered_by_call(call_conv),
+                defs: Self::get_regs_clobbered_by_call(&(), call_conv),
                 opcode: Opcode::Call,
                 caller_callconv: call_conv,
                 callee_callconv: call_conv,
@@ -770,7 +775,10 @@ impl ABIMachineSpec for AArch64MachineDeps {
         s.nominal_sp_to_fp
     }
 
-    fn get_regs_clobbered_by_call(call_conv_of_callee: isa::CallConv) -> Vec<Writable<Reg>> {
+    fn get_regs_clobbered_by_call(
+        _: &(),
+        call_conv_of_callee: isa::CallConv,
+    ) -> Vec<Writable<Reg>> {
         let mut caller_saved = Vec::new();
         for i in 0..29 {
             let x = writable_xreg(i);

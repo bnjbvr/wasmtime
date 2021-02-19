@@ -534,8 +534,12 @@ impl EmitInfo {
 }
 
 impl MachInstEmitInfo for EmitInfo {
+    type RegDefs = ();
     fn flags(&self) -> &settings::Flags {
         &self.0
+    }
+    fn regs(&self) -> &Self::RegDefs {
+        &()
     }
 }
 

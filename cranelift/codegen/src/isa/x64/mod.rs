@@ -1,6 +1,6 @@
 //! X86_64-bit Instruction Set Architecture.
 
-use self::inst::EmitInfo;
+use self::inst::{regs::Registers, EmitInfo};
 
 use super::TargetIsa;
 use crate::ir::{condcodes::IntCC, Function};
@@ -25,26 +25,30 @@ pub(crate) struct X64Backend {
     triple: Triple,
     flags: Flags,
     x64_flags: x64_settings::Flags,
-    reg_universe: RealRegUniverse,
+    regs: Registers,
 }
 
 impl X64Backend {
     /// Create a new X64 backend with the given (shared) flags.
     fn new_with_flags(triple: Triple, flags: Flags, x64_flags: x64_settings::Flags) -> Self {
-        let reg_universe = create_reg_universe_systemv(&flags);
+        let regs = create_reg_universe_systemv(&flags);
         Self {
             triple,
             flags,
             x64_flags,
-            reg_universe,
+            regs,
         }
     }
 
     fn compile_vcode(&self, func: &Function, flags: Flags) -> CodegenResult<VCode<inst::Inst>> {
         // This performs lowering to VCode, register-allocates the code, computes
         // block layout and finalizes branches. The result is ready for binary emission.
-        let emit_info = EmitInfo::new(flags.clone(), self.x64_flags.clone());
-        let abi = Box::new(abi::X64ABICallee::new(&func, flags)?);
+        let emit_info = EmitInfo::new(
+            self.regs.defs.clone(),
+            flags.clone(),
+            self.x64_flags.clone(),
+        );
+        let abi = Box::new(abi::X64ABICallee::new(self.regs.defs, &func, flags)?);
         compile::compile::<Self>(&func, self, abi, emit_info)
     }
 }
@@ -66,7 +70,7 @@ impl MachBackend for X64Backend {
         let stackslot_offsets = vcode.stackslot_offsets().clone();
 
         let disasm = if want_disasm {
-            Some(vcode.show_rru(Some(&create_reg_universe_systemv(flags))))
+            Some(vcode.show_rru(Some(&self.regs.universe)))
         } else {
             None
         };
@@ -99,7 +103,7 @@ impl MachBackend for X64Backend {
     }
 
     fn reg_universe(&self) -> &RealRegUniverse {
-        &self.reg_universe
+        &self.regs.universe
     }
 
     fn unsigned_add_overflow_condition(&self) -> IntCC {

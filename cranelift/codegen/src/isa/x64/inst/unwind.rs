@@ -8,6 +8,8 @@ use crate::result::CodegenResult;
 use alloc::vec::Vec;
 use regalloc::Reg;
 
+use super::regs::RegDefs;
+
 #[cfg(feature = "unwind")]
 pub(crate) mod systemv;
 
@@ -15,6 +17,7 @@ pub struct X64UnwindInfo;
 
 impl UnwindInfoGenerator<Inst> for X64UnwindInfo {
     fn create_unwind_info(
+        regs: &RegDefs,
         context: UnwindInfoContext<Inst>,
     ) -> CodegenResult<Option<UnwindInfo<Reg>>> {
         use crate::isa::unwind::input::{self, UnwindCode};
@@ -45,7 +48,7 @@ impl UnwindInfoGenerator<Inst> for X64UnwindInfo {
                     ));
                 }
                 Inst::MovRR { src, dst, .. } => {
-                    if *src == regs::rsp() {
+                    if *src == regs.rsp {
                         codes.push((offset, UnwindCode::SetFramePointer { reg: dst.to_reg() }));
                     }
                 }
@@ -55,7 +58,7 @@ impl UnwindInfoGenerator<Inst> for X64UnwindInfo {
                     src: RegMemImm::Imm { simm32 },
                     dst,
                     ..
-                } if dst.to_reg() == regs::rsp() => {
+                } if dst.to_reg() == regs.rsp => {
                     let imm = *simm32;
                     codes.push((offset, UnwindCode::StackAlloc { size: imm }));
                 }
@@ -63,7 +66,7 @@ impl UnwindInfoGenerator<Inst> for X64UnwindInfo {
                     src,
                     dst: SyntheticAmode::Real(Amode::ImmReg { simm32, base, .. }),
                     ..
-                } if *base == regs::rsp() => {
+                } if *base == regs.rsp => {
                     // `mov reg, imm(rsp)`
                     let imm = *simm32;
                     codes.push((
@@ -80,7 +83,7 @@ impl UnwindInfoGenerator<Inst> for X64UnwindInfo {
                     src: RegMemImm::Imm { simm32 },
                     dst,
                     ..
-                } if dst.to_reg() == regs::rsp() => {
+                } if dst.to_reg() == regs.rsp => {
                     let imm = *simm32;
                     codes.push((offset, UnwindCode::StackDealloc { size: imm }));
                 }

@@ -22,6 +22,7 @@
 use crate::ir::ValueLabel;
 use crate::machinst::*;
 use crate::value_label::{LabelValueLoc, ValueLabelsRanges, ValueLocRange};
+use core::fmt;
 use log::trace;
 use regalloc::{Reg, RegUsageCollector};
 use std::collections::{HashMap, HashSet};
@@ -62,8 +63,9 @@ impl ValueLoc {
 }
 
 /// Mappings at one program point.
-#[derive(Clone, Debug)]
-struct AnalysisInfo {
+#[derive(Clone)]
+struct AnalysisInfo<'a, M: MachInst> {
+    reg_defs: &'a M::RegDefs,
     /// Nominal SP relative to real SP. If `None`, then the offset is
     /// indeterminate (i.e., we merged to the lattice 'bottom' element). This
     /// should not happen in well-formed code.
@@ -76,21 +78,33 @@ struct AnalysisInfo {
     stack_to_label: HashMap<i64, ValueLabel>,
 }
 
+impl<'a, M: MachInst> fmt::Debug for AnalysisInfo<'a, M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "AnalysisInfo {{")?;
+        write!(f, "   nominal_sp_offset: {:?},", self.nominal_sp_offset)?;
+        write!(f, "   label_to_locs: {:?},", self.label_to_locs)?;
+        write!(f, "   reg_to_label: {:?},", self.reg_to_label)?;
+        write!(f, "   stack_to_label: {:?},", self.stack_to_label)?;
+        write!(f, "}}")
+    }
+}
+
 /// Get the registers written (mod'd or def'd) by a machine instruction.
-fn get_inst_writes<M: MachInst>(m: &M) -> Vec<Reg> {
+fn get_inst_writes<M: MachInst>(m: &M, reg_defs: &M::RegDefs) -> Vec<Reg> {
     // TODO: expose this part of regalloc.rs's interface publicly.
     let mut vecs = RegUsageCollector::get_empty_reg_vecs_test_framework_only(false);
     let mut coll = RegUsageCollector::new(&mut vecs);
-    m.get_regs(&mut coll);
+    m.get_regs(reg_defs, &mut coll);
     vecs.defs.extend(vecs.mods.into_iter());
     vecs.defs
 }
 
-impl AnalysisInfo {
+impl<'a, M: MachInst> AnalysisInfo<'a, M> {
     /// Create a new analysis state. This is the "top" lattice element at which
     /// the fixpoint dataflow analysis starts.
-    fn new() -> Self {
+    fn new(reg_defs: &'a M::RegDefs) -> Self {
         AnalysisInfo {
+            reg_defs,
             nominal_sp_offset: Some(0),
             label_to_locs: HashMap::new(),
             reg_to_label: HashMap::new(),
@@ -182,8 +196,8 @@ impl AnalysisInfo {
     /// Update the analysis state w.r.t. an instruction's effects. Given the
     /// state just before `inst`, this method updates `self` to be the state
     /// just after `inst`.
-    fn step<M: MachInst>(&mut self, inst: &M) {
-        for write in get_inst_writes(inst) {
+    fn step(&mut self, inst: &M) {
+        for write in get_inst_writes(inst, self.reg_defs) {
             self.clear_reg(write);
         }
         if let Some((label, reg)) = inst.defines_value_label() {
@@ -235,7 +249,7 @@ struct IntersectResult {
     is_empty: bool,
 }
 
-impl IntersectFrom for AnalysisInfo {
+impl<'a, M: MachInst> IntersectFrom for AnalysisInfo<'a, M> {
     fn intersect_from(&mut self, other: &Self) -> IntersectResult {
         let mut changed = false;
         changed |= self
@@ -377,6 +391,7 @@ where
 ///   index `l`, `label_insn_index[l]` is the index of the instruction before
 ///   which that label is bound.
 pub(crate) fn compute<I: VCodeInst>(
+    reg_defs: &<I as MachInst>::RegDefs,
     insts: &[I],
     inst_ends: &[u32],
     label_insn_index: &[u32],
@@ -390,10 +405,10 @@ pub(crate) fn compute<I: VCodeInst>(
     trace!("label_insn_index: {:?}", label_insn_index);
 
     // Info at each block head, indexed by label.
-    let mut block_starts: HashMap<u32, AnalysisInfo> = HashMap::new();
+    let mut block_starts: HashMap<u32, AnalysisInfo<I>> = HashMap::new();
 
     // Initialize state at entry.
-    block_starts.insert(0, AnalysisInfo::new());
+    block_starts.insert(0, AnalysisInfo::new(reg_defs));
 
     // Worklist: label indices for basic blocks.
     let mut worklist = Vec::new();

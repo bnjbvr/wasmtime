@@ -338,6 +338,10 @@ impl<I: VCodeInst> VCode<I> {
         }
     }
 
+    pub fn reg_defs(&self) -> &I::RegDefs {
+        self.abi.reg_defs()
+    }
+
     /// Returns the flags controlling this function's compilation.
     pub fn flags(&self) -> &settings::Flags {
         self.abi.flags()
@@ -613,7 +617,7 @@ impl<I: VCodeInst> VCode<I> {
             prologue: prologue.clone(),
             epilogues,
         };
-        I::UnwindInfo::create_unwind_info(context)
+        I::UnwindInfo::create_unwind_info(self.abi.reg_defs(), context)
     }
 
     /// Generates value-label ranges.
@@ -623,7 +627,12 @@ impl<I: VCodeInst> VCode<I> {
         }
 
         let layout = &self.insts_layout.borrow();
-        debug::compute(&self.insts, &layout.0[..], &layout.1[..])
+        debug::compute(
+            self.abi.reg_defs(),
+            &self.insts,
+            &layout.0[..],
+            &layout.1[..],
+        )
     }
 
     /// Get the offsets of stackslots.
@@ -685,8 +694,8 @@ impl<I: VCodeInst> RegallocFunction for VCode<I> {
         insn.is_included_in_clobbers()
     }
 
-    fn get_regs(insn: &I, collector: &mut RegUsageCollector) {
-        insn.get_regs(collector)
+    fn get_regs(&self, insn: &I, collector: &mut RegUsageCollector) {
+        insn.get_regs(self.reg_defs(), collector)
     }
 
     fn map_regs<RUM: RegUsageMapper>(insn: &mut I, mapper: &RUM) {

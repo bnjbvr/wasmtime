@@ -2786,9 +2786,10 @@ fn aarch64_map_regs<RUM: RegUsageMapper>(inst: &mut Inst, mapper: &RUM) {
 // Instructions: misc functions and external interface
 
 impl MachInst for Inst {
+    type RegDefs = ();
     type LabelUse = LabelUse;
 
-    fn get_regs(&self, collector: &mut RegUsageCollector) {
+    fn get_regs(&self, _: &Self::RegDefs, collector: &mut RegUsageCollector) {
         aarch64_get_regs(self, collector)
     }
 
@@ -2955,9 +2956,9 @@ impl MachInst for Inst {
         }
     }
 
-    fn reg_universe(flags: &settings::Flags) -> RealRegUniverse {
-        create_reg_universe(flags)
-    }
+    //fn reg_universe(flags: &settings::Flags) -> RealRegUniverse {
+    //create_reg_universe(flags)
+    //}
 
     fn worst_case_size() -> CodeOffset {
         // The maximum size, in bytes, of any `Inst`'s emitted code. We have at least one case of

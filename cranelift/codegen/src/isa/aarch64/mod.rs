@@ -49,7 +49,7 @@ impl AArch64Backend {
         flags: settings::Flags,
     ) -> CodegenResult<VCode<inst::Inst>> {
         let emit_info = EmitInfo::new(flags.clone());
-        let abi = Box::new(abi::AArch64ABICallee::new(func, flags)?);
+        let abi = Box::new(abi::AArch64ABICallee::new((), func, flags)?);
         compile::compile::<AArch64Backend>(func, self, abi, emit_info)
     }
 }

@@ -22,6 +22,9 @@ pub trait ABICallee {
     /// will be provided to `init()` as the `maybe_tmp` arg if so.
     fn temp_needed(&self) -> Option<Type>;
 
+    /// Returns a collection of register definitions for this architecture.
+    fn reg_defs(&self) -> &<Self::I as MachInst>::RegDefs;
+
     /// Initialize. This is called after the ABICallee is constructed because it
     /// may be provided with a temp vreg, which can only be allocated once the
     /// lowering context exists.

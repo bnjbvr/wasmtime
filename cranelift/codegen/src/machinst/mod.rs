@@ -110,9 +110,13 @@ pub mod debug;
 
 /// A machine instruction.
 pub trait MachInst: Clone + Debug {
+    /// Register definitions types, for architectures which may have different register
+    /// definitions.
+    type RegDefs;
+
     /// Return the registers referenced by this machine instruction along with
     /// the modes of reference (use, def, modify).
-    fn get_regs(&self, collector: &mut RegUsageCollector);
+    fn get_regs(&self, reg_defs: &Self::RegDefs, collector: &mut RegUsageCollector);
 
     /// Map virtual registers to physical registers using the given virt->phys
     /// maps corresponding to the program points prior to, and after, this instruction.
@@ -180,7 +184,8 @@ pub trait MachInst: Clone + Debug {
     fn gen_nop(preferred_size: usize) -> Self;
 
     /// Get the register universe for this backend.
-    fn reg_universe(flags: &Flags) -> RealRegUniverse;
+    //TODO
+    //fn reg_universe(flags: &Flags) -> RealRegUniverse;
 
     /// Align a basic block offset (from start of function).  By default, no
     /// alignment occurs.
@@ -313,9 +318,15 @@ pub trait MachInstEmit: MachInst {
 
 /// Constant information used to emit an instruction.
 pub trait MachInstEmitInfo {
+    /// Register definitions for this particular OS/target.
+    type RegDefs;
+
     /// Return the target-independent settings used for the compilation of this
     /// particular function.
     fn flags(&self) -> &Flags;
+
+    /// Returns the target/OS dependenting register definitions.
+    fn regs(&self) -> &Self::RegDefs;
 }
 
 /// A trait describing the emission state carried between MachInsts when
@@ -452,6 +463,7 @@ pub trait UnwindInfoGenerator<I: MachInstEmit> {
     /// Creates unwind info based on function signature and
     /// emitted instructions.
     fn create_unwind_info(
+        reg_defs: &<I as MachInst>::RegDefs,
         context: UnwindInfoContext<I>,
     ) -> CodegenResult<Option<unwind_input::UnwindInfo<Reg>>>;
 }

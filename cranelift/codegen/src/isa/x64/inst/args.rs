@@ -1,6 +1,6 @@
 //! Instruction operand sub-components (aka "parts"): definitions and printing.
 
-use super::regs::{self, show_ireg_sized};
+use super::regs::{self, show_ireg_sized, RegDefs};
 use super::EmitState;
 use crate::ir::condcodes::{FloatCC, IntCC};
 use crate::ir::{MemFlags, Type};
@@ -10,6 +10,7 @@ use regalloc::{
     PrettyPrint, PrettyPrintSized, RealRegUniverse, Reg, RegClass, RegUsageCollector,
     RegUsageMapper, Writable,
 };
+use std::convert::TryFrom;
 use std::fmt;
 use std::string::String;
 
@@ -184,7 +185,12 @@ impl SyntheticAmode {
         }
     }
 
-    pub(crate) fn finalize(&self, state: &mut EmitState, buffer: &MachBuffer<Inst>) -> Amode {
+    pub(crate) fn finalize(
+        &self,
+        regs: &RegDefs,
+        state: &mut EmitState,
+        buffer: &MachBuffer<Inst>,
+    ) -> Amode {
         match self {
             SyntheticAmode::Real(addr) => addr.clone(),
             SyntheticAmode::NominalSPOffset { simm32 } => {
@@ -194,10 +200,46 @@ impl SyntheticAmode {
                     off <= u32::max_value() as i64,
                     "amode finalize: add sequence NYI"
                 );
-                Amode::imm_reg(off as u32, regs::rsp())
+                Amode::imm_reg(off as u32, regs.rsp)
             }
             SyntheticAmode::ConstantOffset(c) => {
                 Amode::rip_relative(buffer.get_label_for_constant(*c))
+            }
+        }
+    }
+}
+
+impl SyntheticAmode {
+    pub(crate) fn from_amode(regs: &RegDefs, amode: StackAMode) -> Self {
+        // We enforce a 128 MB stack-frame size limit above, so these
+        // `expect()`s should never fail.
+        match amode {
+            StackAMode::FPOffset(off, _ty) => {
+                let off = i32::try_from(off)
+                    .expect("Offset in FPOffset is greater than 2GB; should hit impl limit first");
+                let simm32 = off as u32;
+                SyntheticAmode::Real(Amode::ImmReg {
+                    simm32,
+                    base: regs.rbp,
+                    flags: MemFlags::trusted(),
+                })
+            }
+            StackAMode::NominalSPOffset(off, _ty) => {
+                let off = i32::try_from(off).expect(
+                    "Offset in NominalSPOffset is greater than 2GB; should hit impl limit first",
+                );
+                let simm32 = off as u32;
+                SyntheticAmode::nominal_sp_offset(simm32)
+            }
+            StackAMode::SPOffset(off, _ty) => {
+                let off = i32::try_from(off)
+                    .expect("Offset in SPOffset is greater than 2GB; should hit impl limit first");
+                let simm32 = off as u32;
+                SyntheticAmode::Real(Amode::ImmReg {
+                    simm32,
+                    base: regs.rsp,
+                    flags: MemFlags::trusted(),
+                })
             }
         }
     }

@@ -13,6 +13,7 @@ pub struct AArch64UnwindInfo;
 
 impl UnwindInfoGenerator<Inst> for AArch64UnwindInfo {
     fn create_unwind_info(
+        _: &(),
         context: UnwindInfoContext<Inst>,
     ) -> CodegenResult<Option<UnwindInfo<Reg>>> {
         let word_size = 8u8;

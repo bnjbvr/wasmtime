@@ -27,6 +27,8 @@ pub mod unwind;
 use args::*;
 use regs::{create_reg_universe_systemv, show_ireg_sized};
 
+use self::regs::RegDefs;
+
 //=============================================================================
 // Instructions (top level): definition
 
@@ -1799,7 +1801,7 @@ impl fmt::Debug for Inst {
     }
 }
 
-fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
+fn x64_get_regs(inst: &Inst, regs: &RegDefs, collector: &mut RegUsageCollector) {
     // This is a bit subtle. If some register is in the modified set, then it may not be in either
     // the use or def sets. However, enforcing that directly is somewhat difficult. Instead,
     // regalloc.rs will "fix" this for us by removing the modified set from the use and def
@@ -1821,35 +1823,35 @@ fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
             collector.add_mod(*src);
         }
         Inst::Div { size, divisor, .. } => {
-            collector.add_mod(Writable::from_reg(regs::rax()));
+            collector.add_mod(Writable::from_reg(regs.rax));
             if *size == OperandSize::Size8 {
-                collector.add_def(Writable::from_reg(regs::rdx()));
+                collector.add_def(Writable::from_reg(regs.rdx));
             } else {
-                collector.add_mod(Writable::from_reg(regs::rdx()));
+                collector.add_mod(Writable::from_reg(regs.rdx));
             }
             divisor.get_regs_as_uses(collector);
         }
         Inst::MulHi { rhs, .. } => {
-            collector.add_mod(Writable::from_reg(regs::rax()));
-            collector.add_def(Writable::from_reg(regs::rdx()));
+            collector.add_mod(Writable::from_reg(regs.rax));
+            collector.add_def(Writable::from_reg(regs.rdx));
             rhs.get_regs_as_uses(collector);
         }
         Inst::CheckedDivOrRemSeq { divisor, tmp, .. } => {
             // Mark both fixed registers as mods, to avoid an early clobber problem in codegen
             // (i.e. the temporary is allocated one of the fixed registers). This requires writing
             // the rdx register *before* the instruction, which is not too bad.
-            collector.add_mod(Writable::from_reg(regs::rax()));
-            collector.add_mod(Writable::from_reg(regs::rdx()));
+            collector.add_mod(Writable::from_reg(regs.rax));
+            collector.add_mod(Writable::from_reg(regs.rdx));
             collector.add_mod(*divisor);
             if let Some(tmp) = tmp {
                 collector.add_def(*tmp);
             }
         }
         Inst::SignExtendData { size } => match size {
-            OperandSize::Size8 => collector.add_mod(Writable::from_reg(regs::rax())),
+            OperandSize::Size8 => collector.add_mod(Writable::from_reg(regs.rax)),
             _ => {
-                collector.add_use(regs::rax());
-                collector.add_def(Writable::from_reg(regs::rdx()));
+                collector.add_use(regs.rax);
+                collector.add_def(Writable::from_reg(regs.rdx));
             }
         },
         Inst::UnaryRmR { src, dst, .. } | Inst::XmmUnaryRmR { src, dst, .. } => {
@@ -1963,7 +1965,7 @@ fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
         }
         Inst::ShiftR { num_bits, dst, .. } => {
             if num_bits.is_none() {
-                collector.add_use(regs::rcx());
+                collector.add_use(regs.rcx);
             }
             collector.add_mod(*dst);
         }
@@ -1980,7 +1982,7 @@ fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
         }
         Inst::Push64 { src } => {
             src.get_regs_as_uses(collector);
-            collector.add_mod(Writable::from_reg(regs::rsp()));
+            collector.add_mod(Writable::from_reg(regs.rsp));
         }
         Inst::Pop64 { dst } => {
             collector.add_def(*dst);
@@ -2026,14 +2028,14 @@ fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
         Inst::LockCmpxchg { src, dst, .. } => {
             dst.get_regs_as_uses(collector);
             collector.add_use(*src);
-            collector.add_mod(Writable::from_reg(regs::rax()));
+            collector.add_mod(Writable::from_reg(regs.rax));
         }
 
         Inst::AtomicRmwSeq { .. } => {
-            collector.add_use(regs::r9());
-            collector.add_use(regs::r10());
-            collector.add_def(Writable::from_reg(regs::r11()));
-            collector.add_def(Writable::from_reg(regs::rax()));
+            collector.add_use(regs.r9);
+            collector.add_use(regs.r10);
+            collector.add_def(Writable::from_reg(regs.r11));
+            collector.add_def(Writable::from_reg(regs.rax));
         }
 
         Inst::Ret
@@ -2057,7 +2059,7 @@ fn x64_get_regs(inst: &Inst, collector: &mut RegUsageCollector) {
             // pseudoinstruction (and relocation that it emits) is specific to
             // ELF systems; other x86-64 targets with other conventions (i.e.,
             // Windows) use different TLS strategies.
-            for reg in X64ABIMachineSpec::get_regs_clobbered_by_call(CallConv::SystemV) {
+            for reg in X64ABIMachineSpec::get_regs_clobbered_by_call(regs, CallConv::SystemV) {
                 collector.add_def(reg);
             }
         }
@@ -2470,8 +2472,10 @@ fn x64_map_regs<RUM: RegUsageMapper>(inst: &mut Inst, mapper: &RUM) {
 // Instructions: misc functions and external interface
 
 impl MachInst for Inst {
-    fn get_regs(&self, collector: &mut RegUsageCollector) {
-        x64_get_regs(&self, collector)
+    type RegDefs = RegDefs;
+
+    fn get_regs(&self, regs: &RegDefs, collector: &mut RegUsageCollector) {
+        x64_get_regs(&self, regs, collector)
     }
 
     fn map_regs<RUM: RegUsageMapper>(&mut self, mapper: &RUM) {
@@ -2715,9 +2719,10 @@ impl MachInst for Inst {
         ret
     }
 
-    fn reg_universe(flags: &Flags) -> RealRegUniverse {
-        create_reg_universe_systemv(flags)
-    }
+    //TODO
+    //fn reg_universe(flags: &Flags) -> RealRegUniverse {
+    //create_reg_universe_systemv(flags)
+    //}
 
     fn worst_case_size() -> CodeOffset {
         15
@@ -2757,19 +2762,32 @@ pub struct EmitState {
 
 /// Constant state used during emissions of a sequence of instructions.
 pub struct EmitInfo {
+    reg_defs: RegDefs,
     flags: settings::Flags,
     isa_flags: x64_settings::Flags,
 }
 
 impl EmitInfo {
-    pub(crate) fn new(flags: settings::Flags, isa_flags: x64_settings::Flags) -> Self {
-        Self { flags, isa_flags }
+    pub(crate) fn new(
+        reg_defs: RegDefs,
+        flags: settings::Flags,
+        isa_flags: x64_settings::Flags,
+    ) -> Self {
+        Self {
+            reg_defs,
+            flags,
+            isa_flags,
+        }
     }
 }
 
 impl MachInstEmitInfo for EmitInfo {
+    type RegDefs = RegDefs;
     fn flags(&self) -> &Flags {
         &self.flags
+    }
+    fn regs(&self) -> &RegDefs {
+        &self.reg_defs
     }
 }
 

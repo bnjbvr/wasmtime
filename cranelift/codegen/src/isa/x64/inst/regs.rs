@@ -23,6 +23,20 @@ use regalloc::{
 };
 use std::string::String;
 
+/// Creates a general-purpose register whose encoding is `enc`, and whose index in the
+/// RealRegUniverse is `index`.
+#[inline]
+fn gpr(enc: u8, index: u8) -> Reg {
+    Reg::new_real(RegClass::I64, enc, index)
+}
+
+/// Creates a floating-point register whose encoding is `enc`, and whose index in the
+/// RealRegUniverse is `index`.
+#[inline]
+fn fpr(enc: u8, index: u8) -> Reg {
+    Reg::new_real(RegClass::V128, enc, index)
+}
+
 // Hardware encodings for a few registers.
 
 pub const ENC_RBX: u8 = 3;
@@ -33,211 +47,273 @@ pub const ENC_R13: u8 = 13;
 pub const ENC_R14: u8 = 14;
 pub const ENC_R15: u8 = 15;
 
-fn gpr(enc: u8, index: u8) -> Reg {
-    Reg::new_real(RegClass::I64, enc, index)
+#[derive(Clone)]
+pub struct RegDefs {
+    pub xmm0: Reg,
+    pub xmm1: Reg,
+    pub xmm2: Reg,
+    pub xmm3: Reg,
+    pub xmm4: Reg,
+    pub xmm5: Reg,
+    pub xmm6: Reg,
+    pub xmm7: Reg,
+    pub xmm8: Reg,
+    pub xmm9: Reg,
+    pub xmm10: Reg,
+    pub xmm11: Reg,
+    pub xmm12: Reg,
+    pub xmm13: Reg,
+    pub xmm14: Reg,
+    pub xmm15: Reg,
+    pub rsi: Reg,
+    pub rdi: Reg,
+    pub rax: Reg,
+    pub rcx: Reg,
+    pub rdx: Reg,
+    pub r8: Reg,
+    pub r9: Reg,
+    pub r10: Reg,
+    pub r11: Reg,
+    pub r12: Reg,
+    pub r13: Reg,
+    pub r14: Reg,
+    pub r15: Reg,
+    pub rbx: Reg,
+    pub rsp: Reg,
+    pub rbp: Reg,
+    /// The pinned register on this architecture.
+    /// It must be the same as Spidermonkey's HeapReg, as found in this file.
+    /// https://searchfox.org/mozilla-central/source/js/src/jit/x64/Assembler-x64.h#99
+    pub pinned_reg: Reg,
 }
 
-pub(crate) fn rsi() -> Reg {
-    gpr(6, 16)
-}
-pub(crate) fn rdi() -> Reg {
-    gpr(7, 17)
-}
-pub(crate) fn rax() -> Reg {
-    gpr(0, 18)
-}
-pub(crate) fn rcx() -> Reg {
-    gpr(1, 19)
-}
-pub(crate) fn rdx() -> Reg {
-    gpr(2, 20)
-}
-pub(crate) fn r8() -> Reg {
-    gpr(8, 21)
-}
-pub(crate) fn r9() -> Reg {
-    gpr(9, 22)
-}
-pub(crate) fn r10() -> Reg {
-    gpr(10, 23)
-}
-pub(crate) fn r11() -> Reg {
-    gpr(11, 24)
-}
-pub(crate) fn r12() -> Reg {
-    gpr(ENC_R12, 25)
-}
-pub(crate) fn r13() -> Reg {
-    gpr(ENC_R13, 26)
-}
-pub(crate) fn r14() -> Reg {
-    gpr(ENC_R14, 27)
-}
-pub(crate) fn rbx() -> Reg {
-    gpr(ENC_RBX, 28)
+const FPR: &[(u8, &'static str); 16] = &[
+    (0, "%xmm0"),
+    (1, "%xmm1"),
+    (2, "%xmm2"),
+    (3, "%xmm3"),
+    (4, "%xmm4"),
+    (5, "%xmm5"),
+    (6, "%xmm6"),
+    (7, "%xmm7"),
+    (8, "%xmm8"),
+    (9, "%xmm9"),
+    (10, "%xmm10"),
+    (11, "%xmm11"),
+    (12, "%xmm12"),
+    (13, "%xmm13"),
+    (14, "%xmm14"),
+    (15, "%xmm15"),
+];
+
+const XMM0: (u8, &'static str) = (0, "%xmm0");
+const XMM1: (u8, &'static str) = (1, "%xmm1");
+const XMM2: (u8, &'static str) = (2, "%xmm2");
+const XMM3: (u8, &'static str) = (3, "%xmm3");
+const XMM4: (u8, &'static str) = (4, "%xmm4");
+const XMM5: (u8, &'static str) = (5, "%xmm5");
+const XMM6: (u8, &'static str) = (6, "%xmm6");
+const XMM7: (u8, &'static str) = (7, "%xmm7");
+const XMM8: (u8, &'static str) = (8, "%xmm8");
+const XMM9: (u8, &'static str) = (9, "%xmm9");
+const XMM10: (u8, &'static str) = (10, "%xmm10");
+const XMM11: (u8, &'static str) = (11, "%xmm11");
+const XMM12: (u8, &'static str) = (12, "%xmm12");
+const XMM13: (u8, &'static str) = (13, "%xmm13");
+const XMM14: (u8, &'static str) = (14, "%xmm14");
+const XMM15: (u8, &'static str) = (15, "%xmm15");
+
+const RAX: (u8, &'static str) = (0, "%rax");
+const RCX: (u8, &'static str) = (1, "%rcx");
+const RDX: (u8, &'static str) = (2, "%rdx");
+const RBX: (u8, &'static str) = (3, "%rbx");
+const RSP: (u8, &'static str) = (ENC_RSP, "%rsp");
+const RBP: (u8, &'static str) = (ENC_RBP, "%rbp");
+const RSI: (u8, &'static str) = (6, "%rsi");
+const RDI: (u8, &'static str) = (7, "%rdi");
+const R8: (u8, &'static str) = (8, "%r8");
+const R9: (u8, &'static str) = (9, "%r9");
+const R10: (u8, &'static str) = (10, "%r10");
+const R11: (u8, &'static str) = (11, "%r11");
+const R12: (u8, &'static str) = (12, "%r12");
+const R13: (u8, &'static str) = (13, "%r13");
+const R14: (u8, &'static str) = (14, "%r14");
+const R15: (u8, &'static str) = (15, "%r15");
+
+pub(crate) struct Registers {
+    pub defs: RegDefs,
+    pub universe: RealRegUniverse,
 }
 
-pub(crate) fn r15() -> Reg {
-    // r15 is put aside since this is the pinned register.
-    gpr(ENC_R15, 29)
-}
+impl Registers {
+    pub(crate) fn systemv(use_pinned_reg: bool) -> Self {
+        let mut regs: Vec<(RealReg, String)> = Vec::with_capacity(32);
 
-/// The pinned register on this architecture.
-/// It must be the same as Spidermonkey's HeapReg, as found in this file.
-/// https://searchfox.org/mozilla-central/source/js/src/jit/x64/Assembler-x64.h#99
-pub(crate) fn pinned_reg() -> Reg {
-    r15()
-}
+        // First push all the XMM registers.
+        let first_fpr = regs.len();
 
-fn fpr(enc: u8, index: u8) -> Reg {
-    Reg::new_real(RegClass::V128, enc, index)
-}
+        let xmm0 = fpr(XMM0.0, regs.len() as u8);
+        regs.push((xmm0.to_real_reg(), XMM0.1.into()));
+        let xmm1 = fpr(XMM1.0, regs.len() as u8);
+        regs.push((xmm1.to_real_reg(), XMM1.1.into()));
+        let xmm2 = fpr(XMM2.0, regs.len() as u8);
+        regs.push((xmm2.to_real_reg(), XMM2.1.into()));
+        let xmm3 = fpr(XMM3.0, regs.len() as u8);
+        regs.push((xmm3.to_real_reg(), XMM3.1.into()));
+        let xmm4 = fpr(XMM4.0, regs.len() as u8);
+        regs.push((xmm4.to_real_reg(), XMM4.1.into()));
+        let xmm5 = fpr(XMM5.0, regs.len() as u8);
+        regs.push((xmm5.to_real_reg(), XMM5.1.into()));
+        let xmm6 = fpr(XMM6.0, regs.len() as u8);
+        regs.push((xmm6.to_real_reg(), XMM6.1.into()));
+        let xmm7 = fpr(XMM7.0, regs.len() as u8);
+        regs.push((xmm7.to_real_reg(), XMM7.1.into()));
+        let xmm8 = fpr(XMM8.0, regs.len() as u8);
+        regs.push((xmm8.to_real_reg(), XMM8.1.into()));
+        let xmm9 = fpr(XMM9.0, regs.len() as u8);
+        regs.push((xmm9.to_real_reg(), XMM9.1.into()));
+        let xmm10 = fpr(XMM10.0, regs.len() as u8);
+        regs.push((xmm10.to_real_reg(), XMM10.1.into()));
+        let xmm11 = fpr(XMM11.0, regs.len() as u8);
+        regs.push((xmm11.to_real_reg(), XMM11.1.into()));
+        let xmm12 = fpr(XMM12.0, regs.len() as u8);
+        regs.push((xmm12.to_real_reg(), XMM12.1.into()));
+        let xmm13 = fpr(XMM13.0, regs.len() as u8);
+        regs.push((xmm13.to_real_reg(), XMM13.1.into()));
+        let xmm14 = fpr(XMM14.0, regs.len() as u8);
+        regs.push((xmm14.to_real_reg(), XMM14.1.into()));
+        let xmm15 = fpr(XMM15.0, regs.len() as u8);
+        regs.push((xmm15.to_real_reg(), XMM15.1.into()));
+        let last_fpr = regs.len() - 1;
 
-pub(crate) fn xmm0() -> Reg {
-    fpr(0, 0)
-}
-pub(crate) fn xmm1() -> Reg {
-    fpr(1, 1)
-}
-pub(crate) fn xmm2() -> Reg {
-    fpr(2, 2)
-}
-pub(crate) fn xmm3() -> Reg {
-    fpr(3, 3)
-}
-pub(crate) fn xmm4() -> Reg {
-    fpr(4, 4)
-}
-pub(crate) fn xmm5() -> Reg {
-    fpr(5, 5)
-}
-pub(crate) fn xmm6() -> Reg {
-    fpr(6, 6)
-}
-pub(crate) fn xmm7() -> Reg {
-    fpr(7, 7)
-}
-pub(crate) fn xmm8() -> Reg {
-    fpr(8, 8)
-}
-pub(crate) fn xmm9() -> Reg {
-    fpr(9, 9)
-}
-pub(crate) fn xmm10() -> Reg {
-    fpr(10, 10)
-}
-pub(crate) fn xmm11() -> Reg {
-    fpr(11, 11)
-}
-pub(crate) fn xmm12() -> Reg {
-    fpr(12, 12)
-}
-pub(crate) fn xmm13() -> Reg {
-    fpr(13, 13)
-}
-pub(crate) fn xmm14() -> Reg {
-    fpr(14, 14)
-}
-pub(crate) fn xmm15() -> Reg {
-    fpr(15, 15)
-}
+        // Integer regs.
+        let first_gpr = regs.len();
 
-pub(crate) fn rsp() -> Reg {
-    gpr(ENC_RSP, 30)
-}
-pub(crate) fn rbp() -> Reg {
-    gpr(ENC_RBP, 31)
+        // Caller-saved, in the SystemV x86_64 ABI.
+        let rsi = gpr(RSI.0, regs.len() as u8);
+        regs.push((rsi.to_real_reg(), RSI.1.into()));
+
+        let rdi = gpr(RDI.0, regs.len() as u8);
+        regs.push((rdi.to_real_reg(), RDI.1.into()));
+
+        let rax = gpr(RAX.0, regs.len() as u8);
+        regs.push((rax.to_real_reg(), RAX.1.into()));
+
+        let rcx = gpr(RCX.0, regs.len() as u8);
+        regs.push((rcx.to_real_reg(), RCX.1.into()));
+
+        let rdx = gpr(RDX.0, regs.len() as u8);
+        regs.push((rdx.to_real_reg(), RDX.1.into()));
+
+        let r8 = gpr(R8.0, regs.len() as u8);
+        regs.push((r8.to_real_reg(), R8.1.into()));
+
+        let r9 = gpr(R9.0, regs.len() as u8);
+        regs.push((r9.to_real_reg(), R9.1.into()));
+
+        let r10 = gpr(R10.0, regs.len() as u8);
+        regs.push((r10.to_real_reg(), R10.1.into()));
+
+        let r11 = gpr(R11.0, regs.len() as u8);
+        regs.push((r11.to_real_reg(), R11.1.into()));
+
+        // Callee-saved, in the SystemV x86_64 ABI.
+        let r12 = gpr(R12.0, regs.len() as u8);
+        regs.push((r12.to_real_reg(), R12.1.into()));
+
+        let r13 = gpr(R13.0, regs.len() as u8);
+        regs.push((r13.to_real_reg(), R13.1.into()));
+
+        let r14 = gpr(R14.0, regs.len() as u8);
+        regs.push((r14.to_real_reg(), R14.1.into()));
+
+        let rbx = gpr(RBX.0, regs.len() as u8);
+        regs.push((rbx.to_real_reg(), RBX.1.into()));
+
+        // Other regs, not available to the allocator.
+        let r15 = gpr(R15.0, regs.len() as u8);
+        let (pinned_reg, allocable) = if use_pinned_reg {
+            // The pinned register is not allocatable in this case, so record the length before adding
+            // it.
+            let len = regs.len();
+            regs.push((r15.to_real_reg(), "%r15/pinned".into()));
+            (r15, len)
+        } else {
+            regs.push((r15.to_real_reg(), "%r15".into()));
+            (Reg::invalid(), regs.len())
+        };
+        let last_gpr = allocable - 1;
+
+        let rsp = gpr(RSP.0, regs.len() as u8);
+        regs.push((rsp.to_real_reg(), RSP.1.into()));
+
+        let rbp = gpr(RBP.0, regs.len() as u8);
+        regs.push((rbp.to_real_reg(), RBP.1.into()));
+
+        let mut allocable_by_class = [None; NUM_REG_CLASSES];
+        allocable_by_class[RegClass::I64.rc_to_usize()] = Some(RegClassInfo {
+            first: first_gpr,
+            last: last_gpr,
+            suggested_scratch: Some(r12.get_index()),
+        });
+        allocable_by_class[RegClass::V128.rc_to_usize()] = Some(RegClassInfo {
+            first: first_fpr,
+            last: last_fpr,
+            suggested_scratch: Some(xmm15.get_index()),
+        });
+
+        let defs = RegDefs {
+            xmm0,
+            xmm1,
+            xmm2,
+            xmm3,
+            xmm4,
+            xmm5,
+            xmm6,
+            xmm7,
+            xmm8,
+            xmm9,
+            xmm10,
+            xmm11,
+            xmm12,
+            xmm13,
+            xmm14,
+            xmm15,
+            rsi,
+            rdi,
+            rax,
+            rcx,
+            rdx,
+            r8,
+            r9,
+            r10,
+            r11,
+            r12,
+            r13,
+            r14,
+            rbx,
+            r15,
+            rsp,
+            rbp,
+            pinned_reg,
+        };
+
+        let universe = RealRegUniverse {
+            regs,
+            allocable,
+            allocable_by_class,
+        };
+
+        Self { defs, universe }
+    }
 }
 
 /// Create the register universe for X64.
 ///
 /// The ordering of registers matters, as commented in the file doc comment: assumes the
 /// calling-convention is SystemV, at the moment.
-pub(crate) fn create_reg_universe_systemv(flags: &settings::Flags) -> RealRegUniverse {
-    let mut regs = Vec::<(RealReg, String)>::new();
-    let mut allocable_by_class = [None; NUM_REG_CLASSES];
-
-    let use_pinned_reg = flags.enable_pinned_reg();
-
-    // XMM registers
-    let first_fpr = regs.len();
-    regs.push((xmm0().to_real_reg(), "%xmm0".into()));
-    regs.push((xmm1().to_real_reg(), "%xmm1".into()));
-    regs.push((xmm2().to_real_reg(), "%xmm2".into()));
-    regs.push((xmm3().to_real_reg(), "%xmm3".into()));
-    regs.push((xmm4().to_real_reg(), "%xmm4".into()));
-    regs.push((xmm5().to_real_reg(), "%xmm5".into()));
-    regs.push((xmm6().to_real_reg(), "%xmm6".into()));
-    regs.push((xmm7().to_real_reg(), "%xmm7".into()));
-    regs.push((xmm8().to_real_reg(), "%xmm8".into()));
-    regs.push((xmm9().to_real_reg(), "%xmm9".into()));
-    regs.push((xmm10().to_real_reg(), "%xmm10".into()));
-    regs.push((xmm11().to_real_reg(), "%xmm11".into()));
-    regs.push((xmm12().to_real_reg(), "%xmm12".into()));
-    regs.push((xmm13().to_real_reg(), "%xmm13".into()));
-    regs.push((xmm14().to_real_reg(), "%xmm14".into()));
-    regs.push((xmm15().to_real_reg(), "%xmm15".into()));
-    let last_fpr = regs.len() - 1;
-
-    // Integer regs.
-    let first_gpr = regs.len();
-
-    // Caller-saved, in the SystemV x86_64 ABI.
-    regs.push((rsi().to_real_reg(), "%rsi".into()));
-    regs.push((rdi().to_real_reg(), "%rdi".into()));
-    regs.push((rax().to_real_reg(), "%rax".into()));
-    regs.push((rcx().to_real_reg(), "%rcx".into()));
-    regs.push((rdx().to_real_reg(), "%rdx".into()));
-    regs.push((r8().to_real_reg(), "%r8".into()));
-    regs.push((r9().to_real_reg(), "%r9".into()));
-    regs.push((r10().to_real_reg(), "%r10".into()));
-    regs.push((r11().to_real_reg(), "%r11".into()));
-
-    // Callee-saved, in the SystemV x86_64 ABI.
-    regs.push((r12().to_real_reg(), "%r12".into()));
-    regs.push((r13().to_real_reg(), "%r13".into()));
-    regs.push((r14().to_real_reg(), "%r14".into()));
-
-    regs.push((rbx().to_real_reg(), "%rbx".into()));
-
-    // Other regs, not available to the allocator.
-    debug_assert_eq!(r15(), pinned_reg());
-    let allocable = if use_pinned_reg {
-        // The pinned register is not allocatable in this case, so record the length before adding
-        // it.
-        let len = regs.len();
-        regs.push((r15().to_real_reg(), "%r15/pinned".into()));
-        len
-    } else {
-        regs.push((r15().to_real_reg(), "%r15".into()));
-        regs.len()
-    };
-    let last_gpr = allocable - 1;
-
-    regs.push((rsp().to_real_reg(), "%rsp".into()));
-    regs.push((rbp().to_real_reg(), "%rbp".into()));
-
-    allocable_by_class[RegClass::I64.rc_to_usize()] = Some(RegClassInfo {
-        first: first_gpr,
-        last: last_gpr,
-        suggested_scratch: Some(r12().get_index()),
-    });
-    allocable_by_class[RegClass::V128.rc_to_usize()] = Some(RegClassInfo {
-        first: first_fpr,
-        last: last_fpr,
-        suggested_scratch: Some(xmm15().get_index()),
-    });
-
-    // Sanity-check: the index passed to the Reg ctor must match the order in the register list.
-    for (i, reg) in regs.iter().enumerate() {
-        assert_eq!(i, reg.0.get_index());
-    }
-
-    RealRegUniverse {
-        regs,
-        allocable,
-        allocable_by_class,
-    }
+pub(crate) fn create_reg_universe_systemv(flags: &settings::Flags) -> Registers {
+    Registers::systemv(flags.enable_pinned_reg())
 }
 
 /// If `ireg` denotes an I64-classed reg, make a best-effort attempt to show its name at some

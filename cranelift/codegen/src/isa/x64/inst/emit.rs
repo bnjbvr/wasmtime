@@ -226,6 +226,8 @@ fn emit_std_enc_mem(
     mem_e: &Amode,
     rex: RexFlags,
 ) {
+    let regs = &info.reg_defs;
+
     // General comment for this function: the registers in `mem_e` must be
     // 64-bit integer registers, because they are part of an address
     // expression.  But `enc_g` can be derived from a register of any class.
@@ -242,7 +244,7 @@ fn emit_std_enc_mem(
         Amode::ImmReg { simm32, base, .. } => {
             // If this is an access based off of RSP, it may trap with a stack overflow if it's the
             // first touch of a new stack page.
-            if *base == regs::rsp() && !can_trap && info.flags().enable_probestack() {
+            if *base == regs.rsp && !can_trap && info.flags().enable_probestack() {
                 sink.add_trap(srcloc, TrapCode::StackOverflow);
             }
 
@@ -308,7 +310,7 @@ fn emit_std_enc_mem(
         } => {
             // If this is an access based off of RSP, it may trap with a stack overflow if it's the
             // first touch of a new stack page.
-            if *reg_base == regs::rsp() && !can_trap && info.flags().enable_probestack() {
+            if *reg_base == regs.rsp && !can_trap && info.flags().enable_probestack() {
                 sink.add_trap(srcloc, TrapCode::StackOverflow);
             }
 
@@ -560,6 +562,8 @@ pub(crate) fn emit(
         }
     }
 
+    let regs = &info.reg_defs;
+
     match inst {
         Inst::AluRmiR {
             size,
@@ -585,7 +589,7 @@ pub(crate) fn emit(
                     }
 
                     RegMemImm::Mem { addr } => {
-                        let amode = addr.finalize(state, sink);
+                        let amode = addr.finalize(regs, state, sink);
                         emit_std_reg_mem(
                             sink,
                             state,
@@ -655,7 +659,7 @@ pub(crate) fn emit(
                             rex.always_emit_if_8bit_needed(reg_g.to_reg());
                         }
                         // Here we revert to the "normal" G-E ordering.
-                        let amode = addr.finalize(state, sink);
+                        let amode = addr.finalize(regs, state, sink);
                         emit_std_reg_mem(
                             sink,
                             state,
@@ -724,7 +728,7 @@ pub(crate) fn emit(
                     rex_flags,
                 ),
                 RegMem::Mem { addr: src } => {
-                    let amode = src.finalize(state, sink);
+                    let amode = src.finalize(regs, state, sink);
                     emit_std_reg_mem(
                         sink,
                         state,
@@ -798,7 +802,7 @@ pub(crate) fn emit(
                     )
                 }
                 RegMem::Mem { addr: src } => {
-                    let amode = src.finalize(state, sink);
+                    let amode = src.finalize(regs, state, sink);
                     emit_std_enc_mem(
                         sink,
                         state,
@@ -830,7 +834,7 @@ pub(crate) fn emit(
                     emit_std_enc_enc(sink, prefix, 0xF7, 1, subopcode, src, rex_flags)
                 }
                 RegMem::Mem { addr: src } => {
-                    let amode = src.finalize(state, sink);
+                    let amode = src.finalize(regs, state, sink);
                     emit_std_enc_mem(
                         sink, state, info, prefix, 0xF7, 1, subopcode, &amode, rex_flags,
                     );
@@ -911,7 +915,7 @@ pub(crate) fn emit(
                     // x % -1 = 0; put the result into the destination, $rdx.
                     let done_label = sink.get_label();
 
-                    let inst = Inst::imm(*size, 0, Writable::from_reg(regs::rdx()));
+                    let inst = Inst::imm(*size, 0, Writable::from_reg(regs.rdx));
                     inst.emit(sink, info, state);
 
                     let inst = Inst::jmp_known(done_label);
@@ -929,11 +933,11 @@ pub(crate) fn emit(
                         let inst = Inst::cmp_rmi_r(
                             OperandSize::Size64,
                             RegMemImm::reg(tmp.to_reg()),
-                            regs::rax(),
+                            regs.rax,
                         );
                         inst.emit(sink, info, state);
                     } else {
-                        let inst = Inst::cmp_rmi_r(*size, RegMemImm::imm(0x80000000), regs::rax());
+                        let inst = Inst::cmp_rmi_r(*size, RegMemImm::imm(0x80000000), regs.rax);
                         inst.emit(sink, info, state);
                     }
 
@@ -963,7 +967,7 @@ pub(crate) fn emit(
                 inst.emit(sink, info, state);
             } else {
                 // zero for unsigned opcodes.
-                let inst = Inst::imm(OperandSize::Size64, 0, Writable::from_reg(regs::rdx()));
+                let inst = Inst::imm(OperandSize::Size64, 0, Writable::from_reg(regs.rdx));
                 inst.emit(sink, info, state);
             }
 
@@ -1076,7 +1080,7 @@ pub(crate) fn emit(
                 }
 
                 RegMem::Mem { addr: src } => {
-                    let src = &src.finalize(state, sink);
+                    let src = &src.finalize(regs, state, sink);
 
                     emit_std_reg_mem(
                         sink,
@@ -1094,7 +1098,7 @@ pub(crate) fn emit(
         }
 
         Inst::Mov64MR { src, dst } => {
-            let src = &src.finalize(state, sink);
+            let src = &src.finalize(regs, state, sink);
 
             emit_std_reg_mem(
                 sink,
@@ -1110,7 +1114,7 @@ pub(crate) fn emit(
         }
 
         Inst::LoadEffectiveAddress { addr, dst } => {
-            let amode = addr.finalize(state, sink);
+            let amode = addr.finalize(regs, state, sink);
 
             emit_std_reg_mem(
                 sink,
@@ -1170,7 +1174,7 @@ pub(crate) fn emit(
                 }
 
                 RegMem::Mem { addr: src } => {
-                    let src = &src.finalize(state, sink);
+                    let src = &src.finalize(regs, state, sink);
 
                     emit_std_reg_mem(
                         sink,
@@ -1188,7 +1192,7 @@ pub(crate) fn emit(
         }
 
         Inst::MovRM { size, src, dst } => {
-            let dst = &dst.finalize(state, sink);
+            let dst = &dst.finalize(regs, state, sink);
 
             let prefix = match size {
                 OperandSize::Size16 => LegacyPrefixes::_66,
@@ -1302,7 +1306,7 @@ pub(crate) fn emit(
                         emit_std_reg_reg(sink, prefix, opcode_bytes, 2, dst.to_reg(), *reg, rex);
                     }
                     RegMemImm::Mem { addr } => {
-                        let addr = &addr.finalize(state, sink);
+                        let addr = &addr.finalize(regs, state, sink);
                         emit_std_reg_mem(
                             sink,
                             state,
@@ -1357,7 +1361,7 @@ pub(crate) fn emit(
                 }
 
                 RegMemImm::Mem { addr } => {
-                    let addr = &addr.finalize(state, sink);
+                    let addr = &addr.finalize(regs, state, sink);
                     // Whereas here we revert to the "normal" G-E ordering for CMP.
                     let opcode = match (*size, is_cmp) {
                         (OperandSize::Size8, true) => 0x3A,
@@ -1432,7 +1436,7 @@ pub(crate) fn emit(
                     emit_std_reg_reg(sink, prefix, opcode, 2, reg_g.to_reg(), *reg_e, rex_flags);
                 }
                 RegMem::Mem { addr } => {
-                    let addr = &addr.finalize(state, sink);
+                    let addr = &addr.finalize(regs, state, sink);
                     emit_std_reg_mem(
                         sink,
                         state,
@@ -1483,7 +1487,7 @@ pub(crate) fn emit(
                 }
 
                 RegMemImm::Mem { addr } => {
-                    let addr = &addr.finalize(state, sink);
+                    let addr = &addr.finalize(regs, state, sink);
                     emit_std_enc_mem(
                         sink,
                         state,
@@ -1556,7 +1560,7 @@ pub(crate) fn emit(
                 }
 
                 RegMem::Mem { addr } => {
-                    let addr = &addr.finalize(state, sink);
+                    let addr = &addr.finalize(regs, state, sink);
                     emit_std_enc_mem(
                         sink,
                         state,
@@ -1655,7 +1659,7 @@ pub(crate) fn emit(
                 }
 
                 RegMem::Mem { addr } => {
-                    let addr = &addr.finalize(state, sink);
+                    let addr = &addr.finalize(regs, state, sink);
                     emit_std_enc_mem(
                         sink,
                         state,
@@ -1814,7 +1818,7 @@ pub(crate) fn emit(
                     );
                 }
                 RegMem::Mem { addr } => {
-                    let addr = &addr.finalize(state, sink);
+                    let addr = &addr.finalize(regs, state, sink);
                     emit_std_reg_mem(
                         sink,
                         state,
@@ -1934,7 +1938,7 @@ pub(crate) fn emit(
                     emit_std_reg_reg(sink, prefix, opcode, length, reg_g.to_reg(), *reg_e, rex);
                 }
                 RegMem::Mem { addr } => {
-                    let addr = &addr.finalize(state, sink);
+                    let addr = &addr.finalize(regs, state, sink);
                     emit_std_reg_mem(
                         sink,
                         state,
@@ -2082,7 +2086,7 @@ pub(crate) fn emit(
                     }
                 }
                 RegMem::Mem { addr } => {
-                    let addr = &addr.finalize(state, sink);
+                    let addr = &addr.finalize(regs, state, sink);
                     assert!(
                         !regs_swapped,
                         "No existing way to encode a mem argument in the ModRM r/m field."
@@ -2126,7 +2130,7 @@ pub(crate) fn emit(
                 SseOpcode::Movupd => (LegacyPrefixes::_66, 0x0F11),
                 _ => unimplemented!("Opcode {:?} not implemented", op),
             };
-            let dst = &dst.finalize(state, sink);
+            let dst = &dst.finalize(regs, state, sink);
             emit_std_reg_mem(
                 sink,
                 state,
@@ -2187,7 +2191,7 @@ pub(crate) fn emit(
                     emit_std_reg_reg(sink, prefix, opcode, 2, reg_g.to_reg(), *reg_e, rex);
                 }
                 RegMem::Mem { addr } => {
-                    let addr = &addr.finalize(state, sink);
+                    let addr = &addr.finalize(regs, state, sink);
                     emit_std_reg_mem(
                         sink,
                         state,
@@ -2217,7 +2221,7 @@ pub(crate) fn emit(
                     emit_std_reg_reg(sink, prefix, opcode, len, *dst, *reg, rex);
                 }
                 RegMem::Mem { addr } => {
-                    let addr = &addr.finalize(state, sink);
+                    let addr = &addr.finalize(regs, state, sink);
                     emit_std_reg_mem(sink, state, info, prefix, opcode, len, *dst, addr, rex);
                 }
             }
@@ -2775,7 +2779,7 @@ pub(crate) fn emit(
                 _ => unreachable!(),
             };
             let rex = RexFlags::from((OperandSize::from_ty(*ty), *src));
-            let amode = dst.finalize(state, sink);
+            let amode = dst.finalize(regs, state, sink);
             emit_std_reg_mem(sink, state, info, prefix, opcodes, 2, *src, &amode, rex);
         }
 
@@ -2796,10 +2800,10 @@ pub(crate) fn emit(
             // In the case where the operation is 'xchg', the "`op`q" instruction is instead
             //   movq                    %r10, %r11
             // so that we simply write in the destination, the "2nd arg for `op`".
-            let rax = regs::rax();
-            let r9 = regs::r9();
-            let r10 = regs::r10();
-            let r11 = regs::r11();
+            let rax = regs.rax;
+            let r9 = regs.r9;
+            let r10 = regs.r10;
+            let r11 = regs.r11;
             let rax_w = Writable::from_reg(rax);
             let r11_w = Writable::from_reg(r11);
             let amode = Amode::imm_reg(0, r9);
