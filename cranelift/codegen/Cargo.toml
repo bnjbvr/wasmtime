@@ -68,7 +68,7 @@ arm32 = [] # Work-in-progress codegen backend for ARM.
 
 # Option to enable all architectures.
 all-arch = [
-    "x86",
+    "x64",
     "arm64",
     "riscv"
 ]
