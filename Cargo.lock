@@ -1507,6 +1507,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mach"
+version = "0.3.3"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "matchers"
 version = "0.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2284,7 +2291,7 @@ checksum = "877e54ea2adcd70d80e9179344c97f93ef0dffd6b03e1f4529e6e83ab2fa9ae0"
 dependencies = [
  "bitflags",
  "libc",
- "mach",
+ "mach 0.3.2",
  "winapi",
 ]
 
@@ -3405,7 +3412,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
- "mach",
+ "mach 0.3.3",
  "memoffset",
  "more-asserts",
  "psm",
