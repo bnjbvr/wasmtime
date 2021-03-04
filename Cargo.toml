@@ -106,3 +106,8 @@ harness = false
 
 [profile.dev.package.backtrace]
 debug = false # FIXME(#1813)
+
+[patch.crates-io]
+gimli = { path = "../gimli" }
+addr2line = { path = "../addr2line" }
+backtrace = { path = "../backtrace-rs"}

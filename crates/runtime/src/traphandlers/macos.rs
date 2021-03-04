@@ -260,7 +260,7 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
 
             let get_pc = |state: &ThreadState| state.__rip as *const u8;
 
-            let resume = |state: &mut ThreadState, arg0: usize, arg1: usize| {
+            let resume = |state: &mut ThreadState, pc: usize, jmp_buf: usize| {
                 // The x86_64 ABI requires a 16-byte stack alignment for
                 // functions, so typically we'll be 16-byte aligned. In this
                 // case we simulate a `call` instruction by decrementing the
@@ -285,25 +285,12 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
                     *(state.__rsp as *mut u64) = state.__rip;
                 }
                 state.__rip = unwind as u64;
-                state.__rdi = arg0 as u64;
-                state.__rsi = arg1 as u64;
+                state.__rdi = pc as u64;
+                state.__rsi = jmp_buf as u64;
             };
             let mut thread_state = ThreadState::new();
         } else if #[cfg(target_arch = "aarch64")] {
-            // TODO: upstream this to the `mach` crate?
-            #[repr(C)]
-            struct arm_thread_state64_t {
-                __x: [u64; 29],
-                __fp: u64,
-                __lr: u64,
-                __sp: u64,
-                __pc: u64,
-                __cpsr: u64,
-                __pad: u64,
-            }
-
-            // TODO: upstream this to the `mach` crate?
-            const ARM_THREAD_STATE64: i32 = 6;
+            use mach::structs::*;
 
             type ThreadState = arm_thread_state64_t;
 
@@ -311,15 +298,42 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
 
             let get_pc = |state: &ThreadState| state.__pc as *const u8;
 
-            let resume = |state: &mut ThreadState, arg0: usize, arg1: usize| {
-                // TODO: what to do with the previous `__pc`? We could put that
-                // into `__lr` but then we'd clobber `__lr` and would need to
-                // figure out what to do with that. This is likely only needed
-                // for the native unwinder, and probably needs testing one way
-                // or another.
-                state.__pc = unwind as u64;
-                state.__x[0] = arg0 as u64;
-                state.__x[1] = arg1 as u64;
+            let resume = |state: &mut ThreadState, pc: usize, jmp_buf: usize| {
+                eprintln!("Previous pc: {:#x}", state.__pc);
+                eprintln!("Previous lr: {:#x}", state.__lr);
+                eprintln!("addressof unwind: {:#x}", unwind as u64);
+                eprintln!("addressof fake frame unwind: {:#x}", wasmtime_macos_aarch64_unwind as u64);
+
+                eprintln!("before fake frame, sp @ {:#x}", state.__sp);
+
+                // Set up two fake frames:
+                // - the innermost one, closest to the asm stub, sets LR as the PC of the faulting
+                // instruction, and relates to the current frame.
+                // - the second innermost one sets LR as the previous value of LR.
+                //
+                // We jump first to the second innermost (because we want it to appear second;
+                // note that the unwinding order is opposite to the call frames).
+                state.__sp -= 16;
+                eprintln!("after fake frame, sp @ {:#x}", state.__sp);
+                eprintln!("after fake frame, previous fp @ {:#x}", state.__sp + 8);
+                eprintln!("after fake frame, previous lr @ {:#x}", state.__sp);
+
+                // Innermost frame.
+                //*((state.__sp + 24) as *mut u64) = state.__fp;
+                //*((state.__sp + 16) as *mut u64) = pc as u64;
+
+                // Second innermost.
+                //*((state.__sp + 8) as *mut u64) = state.__fp;
+                //*((state.__sp + 0) as *mut u64) = state.__lr;
+                *((state.__sp + 8) as *mut u64) = pc as u64;
+                *((state.__sp + 0) as *mut u64) = state.__lr;
+
+                state.__fp = state.__sp + 16;
+
+                state.__pc = wasmtime_macos_aarch64_unwind as u64;
+                state.__x[0] = pc as u64;
+                state.__x[1] = jmp_buf as u64;
+                state.__x[2] = unwind as u64;
             };
             let mut thread_state = mem::zeroed::<ThreadState>();
         } else {
@@ -329,8 +343,7 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
 
     // First up read our origin thread's state into the area defined above.
     let origin_thread = request.body.thread.name;
-    let mut thread_state_count =
-        (mem::size_of_val(&thread_state) / mem::size_of::<libc::c_int>()) as u32;
+    let mut thread_state_count = ThreadState::count();
     let kret = thread_get_state(
         origin_thread,
         thread_state_flavor,
@@ -381,6 +394,10 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
         thread_state_count,
     );
     kret == KERN_SUCCESS
+}
+
+extern "C" {
+    fn wasmtime_macos_aarch64_unwind();
 }
 
 /// This is a "landing pad" which is never called directly but is directly

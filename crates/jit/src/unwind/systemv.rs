@@ -16,9 +16,12 @@ pub struct UnwindRegistry {
     published: bool,
 }
 
+//#[link(name="unwind", kind="static")]
 extern "C" {
     // libunwind import
+    //#[link_name="Ben__register_frame"]
     fn __register_frame(fde: *const u8);
+    //#[link_name="Ben__deregister_frame"]
     fn __deregister_frame(fde: *const u8);
 }
 
@@ -42,6 +45,8 @@ impl UnwindRegistry {
 
         match info {
             UnwindInfo::SystemV(info) => {
+                let addr = self.base_address as u64 + func_start as u64;
+                //eprintln!("add FDE for {:#x}", addr);
                 self.functions.push(info.to_fde(Address::Constant(
                     self.base_address as u64 + func_start as u64,
                 )));
@@ -69,6 +74,7 @@ impl UnwindRegistry {
             self.register_frames();
         }
 
+        //eprintln!("registered the frames!");
         self.published = true;
 
         Ok(())
