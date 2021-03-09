@@ -42,6 +42,9 @@ pub(crate) enum CallFrameInstruction {
     RememberState,
     RestoreState,
     ArgsSize(u32),
+    /// Enables or disables pointer authentication on aarch64 platforms post ARMv8.3.  This
+    /// particular item maps to gimli::ValExpression(RA_SIGN_STATE, lit0/lit1).
+    Aarch64SetPointerAuth(bool),
 }
 
 impl From<gimli::write::CallFrameInstruction> for CallFrameInstruction {
@@ -73,7 +76,7 @@ impl From<gimli::write::CallFrameInstruction> for CallFrameInstruction {
 
 impl Into<gimli::write::CallFrameInstruction> for CallFrameInstruction {
     fn into(self) -> gimli::write::CallFrameInstruction {
-        use gimli::{write::CallFrameInstruction, Register};
+        use gimli::{write::CallFrameInstruction, write::Expression, Register};
 
         match self {
             Self::Cfa(reg, offset) => CallFrameInstruction::Cfa(Register(reg), offset),
@@ -90,6 +93,15 @@ impl Into<gimli::write::CallFrameInstruction> for CallFrameInstruction {
             Self::RememberState => CallFrameInstruction::RememberState,
             Self::RestoreState => CallFrameInstruction::RestoreState,
             Self::ArgsSize(size) => CallFrameInstruction::ArgsSize(size),
+            Self::Aarch64SetPointerAuth(enabled) => {
+                let mut expr = Expression::new();
+                expr.op(if enabled {
+                    gimli::DW_OP_lit1
+                } else {
+                    gimli::DW_OP_lit0
+                });
+                CallFrameInstruction::ValExpression(Register(34), expr)
+            }
         }
     }
 }
@@ -157,6 +169,9 @@ impl UnwindInfo {
                 }
                 UnwindCode::RestoreState => {
                     builder.restore_state(*offset);
+                }
+                UnwindCode::Aarch64SetPAuth { enabled } => {
+                    builder.set_aarch64_pauth(*offset, *enabled);
                 }
             }
         }
@@ -309,5 +324,10 @@ impl<'a, Reg: PartialEq + Copy> InstructionBuilder<'a, Reg> {
 
         self.instructions
             .push((offset, CallFrameInstruction::RestoreState));
+    }
+
+    fn set_aarch64_pauth(&mut self, offset: u32, enabled: bool) {
+        self.instructions
+            .push((offset, CallFrameInstruction::Aarch64SetPointerAuth(enabled)));
     }
 }

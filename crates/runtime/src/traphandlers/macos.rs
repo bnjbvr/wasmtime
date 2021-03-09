@@ -299,19 +299,21 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
             let get_pc = |state: &ThreadState| state.__pc as *const u8;
 
             let resume = |state: &mut ThreadState, pc: usize, jmp_buf: usize| {
-                log::warn!("Previous pc: {}", state.__pc);
-                log::warn!("Previous lr: {}", state.__lr);
-                log::warn!("addressof unwind: {}", unwind as u64);
+                log::warn!("Previous pc: {:#x}", state.__pc);
+                log::warn!("Previous lr: {:#x}", state.__lr);
+                log::warn!("addressof unwind: {:#x}", unwind as u64);
+                log::warn!("addressof fake frame unwind: {:#x}", wasmtime_macos_aarch64_unwind as u64);
 
-                log::warn!("before fake frame, sp @ {}", state.__sp);
+                log::warn!("before fake frame, sp @ {:#x}", state.__sp);
 
                 //if state.__sp % 16 == 0 {
                 state.__sp -= 16;
-                log::warn!("after fake frame, sp @ {}", state.__sp);
-                log::warn!("after fake frame, previous fp @ {}", state.__sp + 8);
-                log::warn!("after fake frame, previous lr @ {}", state.__sp);
+                log::warn!("after fake frame, sp @ {:#x}", state.__sp);
+                log::warn!("after fake frame, previous fp @ {:#x}", state.__sp + 8);
+                log::warn!("after fake frame, previous lr @ {:#x}", state.__sp);
                 *((state.__sp + 8) as *mut u64) = state.__fp;
                 *(state.__sp as *mut u64) = state.__lr;
+                state.__lr = pc as u64;
                 //}
 
                 state.__pc = wasmtime_macos_aarch64_unwind as u64;

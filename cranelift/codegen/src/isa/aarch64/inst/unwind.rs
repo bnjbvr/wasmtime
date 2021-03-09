@@ -19,6 +19,9 @@ impl UnwindInfoGenerator<Inst> for AArch64UnwindInfo {
         let pair_size = word_size * 2;
         let mut codes = Vec::new();
 
+        #[cfg(target_os = "macos")]
+        codes.push((0, UnwindCode::Aarch64SetPAuth { enabled: false }));
+
         for i in context.prologue.clone() {
             let i = i as usize;
             let inst = &context.insts[i];

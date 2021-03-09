@@ -22,9 +22,15 @@ FUNCTION(wasmtime_macos_aarch64_unwind):
         0x08, 0x10,      /* DW_OP_const1u 0x10 */ \
         0x22             /* DW_OP_plus */
 
+    // Set the pseudo-register RA_SIGN_STATE to 0. This disables pointer
+    // authentication for this particular stub.
+    .cfi_escape 0x16,    /* DW_CFA_val_expression */ \
+        0x22,            /* pseudo-reg 34 is RA_SIGN_STATE */ \
+        1,               /* the byte length of this expression */ \
+        0x30             /* DW_OP_lit0 */
+
     .cfi_rel_offset fp, -0x08
     .cfi_rel_offset lr, -0x10
-    ;.cfi_negate_ra_state
 
     // Our two arguments to unwind are already in the right stack slots, unwind
     // is the third argument: call it!
