@@ -24,7 +24,7 @@ FUNCTION(wasmtime_macos_aarch64_unwind):
 
     .cfi_rel_offset fp, -0x08
     .cfi_rel_offset lr, -0x10
-    .cfi_negate_ra_state
+    ;.cfi_negate_ra_state
 
     // Our two arguments to unwind are already in the right stack slots, unwind
     // is the third argument: call it!
