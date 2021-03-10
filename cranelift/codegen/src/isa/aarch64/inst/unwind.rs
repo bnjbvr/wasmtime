@@ -151,33 +151,40 @@ mod tests {
         let result = context.mach_compile_result.unwrap();
         let unwind_info = result.unwind_info.unwrap();
 
+        let mut prologue_unwind_codes = Vec::new();
+
+        #[cfg(target_os = "macos")]
+        prologue_unwind_codes.push((0, UnwindCode::Aarch64SetPAuth {enabled: false}));
+
+        prologue_unwind_codes.append(&mut vec![
+            (4, UnwindCode::StackAlloc { size: 16 }),
+            (
+                4,
+                UnwindCode::SaveRegister {
+                    reg: regs::fp_reg(),
+                    stack_offset: 0,
+                },
+            ),
+            (
+                4,
+                UnwindCode::SaveRegister {
+                    reg: regs::link_reg(),
+                    stack_offset: 8,
+                },
+            ),
+            (
+                8,
+                UnwindCode::SetFramePointer {
+                    reg: regs::fp_reg(),
+                },
+            ),
+        ]);
+
         assert_eq!(
             unwind_info,
             UnwindInfo {
                 prologue_size: 12,
-                prologue_unwind_codes: vec![
-                    (4, UnwindCode::StackAlloc { size: 16 }),
-                    (
-                        4,
-                        UnwindCode::SaveRegister {
-                            reg: regs::fp_reg(),
-                            stack_offset: 0
-                        }
-                    ),
-                    (
-                        4,
-                        UnwindCode::SaveRegister {
-                            reg: regs::link_reg(),
-                            stack_offset: 8
-                        }
-                    ),
-                    (
-                        8,
-                        UnwindCode::SetFramePointer {
-                            reg: regs::fp_reg()
-                        }
-                    )
-                ],
+                prologue_unwind_codes,
                 epilogues_unwind_codes: vec![],
                 function_size: 24,
                 word_size: 8,
