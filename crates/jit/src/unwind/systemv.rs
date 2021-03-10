@@ -16,11 +16,10 @@ pub struct UnwindRegistry {
     published: bool,
 }
 
-#[link(name="libunwind", kind="static")]
 extern "C" {
     // libunwind import
-    fn Ben__register_frame(fde: *const u8);
-    fn Ben__deregister_frame(fde: *const u8);
+    fn __register_frame(fde: *const u8);
+    fn __deregister_frame(fde: *const u8);
 }
 
 impl UnwindRegistry {
@@ -44,7 +43,7 @@ impl UnwindRegistry {
         match info {
             UnwindInfo::SystemV(info) => {
                 let addr = self.base_address as u64 + func_start as u64;
-                eprintln!("add FDE for {:#x}", addr);
+                //eprintln!("add FDE for {:#x}", addr);
                 self.functions.push(info.to_fde(Address::Constant(
                     self.base_address as u64 + func_start as u64,
                 )));
@@ -72,7 +71,7 @@ impl UnwindRegistry {
             self.register_frames();
         }
 
-        eprintln!("registered the frames!");
+        //eprintln!("registered the frames!");
         self.published = true;
 
         Ok(())
@@ -108,7 +107,7 @@ impl UnwindRegistry {
         if cfg!(any(all(target_os = "linux", target_env = "gnu"), target_os = "freebsd")) {
             // On gnu (libgcc), `__register_frame` will walk the FDEs until an entry of length 0
             let ptr = self.frame_table.as_ptr();
-            Ben__register_frame(ptr);
+            __register_frame(ptr);
             self.registrations.push(ptr as usize);
         } else {
             // For libunwind, `__register_frame` takes a pointer to a single FDE
@@ -122,7 +121,7 @@ impl UnwindRegistry {
 
                 // Skip over the CIE
                 if current != start {
-                    Ben__register_frame(current);
+                    __register_frame(current);
                     self.registrations.push(current as usize);
                 }
 
@@ -146,7 +145,7 @@ impl Drop for UnwindRegistry {
                 // To ensure that we just pop off the first element in the list upon every
                 // deregistration, walk our list of registrations backwards.
                 for fde in self.registrations.iter().rev() {
-                    Ben__deregister_frame(*fde as *const _);
+                    __deregister_frame(*fde as *const _);
                 }
             }
         }

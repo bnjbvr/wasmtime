@@ -17,6 +17,7 @@ FUNCTION(wasmtime_macos_aarch64_unwind):
     // Define what's the CFA == the stack pointer of whatever called into here.
     // Here, it's defined as ($sp + 0x10).
     .cfi_def_cfa x31, 0x10
+    ;.cfi_def_cfa x31, 0x20
     ;.cfi_escape 0x0f,    /* DW_CFA_def_cfa_expression */ \
         ;4,               /* the byte length of this expression */ \
         ;0x6f,            /* DW_OP_reg31(%sp) */ \
@@ -30,8 +31,14 @@ FUNCTION(wasmtime_macos_aarch64_unwind):
         1,               /* the byte length of this expression */ \
         0x30             /* DW_OP_lit0 */
 
-    .cfi_rel_offset fp, -0x08
-    .cfi_rel_offset lr, -0x10
+    .cfi_offset fp, -0x08
+    .cfi_offset lr, -0x10
+
+    ;.cfi_offset fp, -0x10
+    ;.cfi_offset pc, -0x16
+    ;.cfi_offset lr, -0x20
+    ;.cfi_rel_offset fp, -0x08
+    ;.cfi_rel_offset lr, -0x10
 
     // Our two arguments to unwind are already in the right stack slots, unwind
     // is the third argument: call it!
