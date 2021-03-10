@@ -16,11 +16,12 @@ FUNCTION(wasmtime_macos_aarch64_unwind):
 .cfi_startproc simple
     // Define what's the CFA == the stack pointer of whatever called into here.
     // Here, it's defined as ($sp + 0x10).
-    .cfi_escape 0x0f,    /* DW_CFA_def_cfa_expression */ \
-        4,               /* the byte length of this expression */ \
-        0x6f,            /* DW_OP_reg31(%sp) */ \
-        0x08, 0x10,      /* DW_OP_const1u 0x10 */ \
-        0x22             /* DW_OP_plus */
+    .cfi_def_cfa x31, 0x10
+    ;.cfi_escape 0x0f,    /* DW_CFA_def_cfa_expression */ \
+        ;4,               /* the byte length of this expression */ \
+        ;0x6f,            /* DW_OP_reg31(%sp) */ \
+        ;0x08, 0x10,      /* DW_OP_const1u 0x10 */ \
+        ;0x22             /* DW_OP_plus */
 
     // Set the pseudo-register RA_SIGN_STATE to 0. This disables pointer
     // authentication for this particular stub.

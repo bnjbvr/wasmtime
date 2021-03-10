@@ -66,8 +66,8 @@ pub mod input {
         RememberState,
         /// Restores the state.
         RestoreState,
-        /// On aarch64 ARMv8.3+ devices, marks the return addresses as pointer-authenticated if
-        /// true, not pointer-authenticated if false.
+        /// On aarch64 ARMv8.3+ devices, enables or disables pointer authentication. As of March
+        /// 2021, only return addresses may be signed and authenticated.
         Aarch64SetPAuth {
             /// Wheter we want pointer authentication to be enabled or not.
             enabled: bool

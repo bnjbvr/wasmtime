@@ -432,8 +432,10 @@ impl<'a> CallThreadState<'a> {
 
     fn capture_backtrace(&self, pc: *const u8) {
         let backtrace = Backtrace::new_unresolved();
-        log::warn!("backtrace! {:?}", backtrace);
-        log::warn!("backtrace frames {:#?}", backtrace.frames());
+        eprintln!("capture_backtrace start");
+        for fr in backtrace.frames() {
+            eprintln!("  ip={:#x}", fr.ip() as u64);
+        }
         self.unwind.replace(UnwindReason::JitTrap {
             backtrace,
             pc: pc as usize,
