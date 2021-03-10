@@ -306,16 +306,27 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
 
                 eprintln!("before fake frame, sp @ {:#x}", state.__sp);
 
-                //if state.__sp % 16 == 0 {
-                state.__sp -= 16;
+                // Set up two fake frames:
+                // - the innermost one, closest to the asm stub, sets LR as the PC of the faulting
+                // instruction, and relates to the current frame.
+                // - the second innermost one sets LR as the previous value of LR.
+                //
+                // We jump first to the second innermost (because we want it to appear second;
+                // note that the unwinding order is opposite to the call frames).
+                state.__sp -= 32;
                 eprintln!("after fake frame, sp @ {:#x}", state.__sp);
                 eprintln!("after fake frame, previous fp @ {:#x}", state.__sp + 8);
                 eprintln!("after fake frame, previous lr @ {:#x}", state.__sp);
+
+                // Innermost frame.
+                *((state.__sp + 24) as *mut u64) = state.__fp;
+                *((state.__sp + 16) as *mut u64) = pc as u64;
+
+                // Second innermost.
                 *((state.__sp + 8) as *mut u64) = state.__fp;
-                *(state.__sp as *mut u64) = state.__lr;
-                state.__lr = pc as u64;
+                *((state.__sp + 0) as *mut u64) = state.__lr;
+
                 state.__fp = state.__sp + 16;
-                //}
 
                 state.__pc = wasmtime_macos_aarch64_unwind as u64;
                 state.__x[0] = pc as u64;

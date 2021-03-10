@@ -6,7 +6,29 @@
 #define FUNCTION(fnname) _##fnname
 #define SIZE(fnname)
 
-// TODO fn(top_of_stack(%x0): *mut u8)
+HIDDEN(wasmtime_macos_aarch64_unwind_innermost)
+GLOBL(wasmtime_macos_aarch64_unwind_innermost)
+
+.p2align 2
+TYPE(wasmtime_macos_aarch64_unwind_innermost)
+FUNCTION(wasmtime_macos_aarch64_unwind_innermost):
+.cfi_startproc simple
+    .cfi_def_cfa x31, 0x20
+
+    .cfi_escape 0x16,    /* DW_CFA_val_expression */ \
+        0x22,            /* pseudo-reg 34 is RA_SIGN_STATE */ \
+        1,               /* the byte length of this expression */ \
+        0x30             /* DW_OP_lit0 */
+
+    .cfi_offset fp, -0x08
+    .cfi_offset lr, -0x10
+
+    blr x2
+
+    udf 0x1337
+    .cfi_endproc
+SIZE(wasmtime_macos_aarch64_unwind_innermost)
+
 HIDDEN(wasmtime_macos_aarch64_unwind)
 GLOBL(wasmtime_macos_aarch64_unwind)
 
@@ -35,7 +57,8 @@ FUNCTION(wasmtime_macos_aarch64_unwind):
 
     // Our two arguments to unwind are already in the right stack slots, unwind
     // is the third argument: call it!
-    blr x2
+    adr x3, FUNCTION(wasmtime_macos_aarch64_unwind_innermost)
+    blr x3
 
     // Unreachable, since "unwind" should longjmp to the top of the wasm call
     // stack. This should help catch unexpected behaviors.
