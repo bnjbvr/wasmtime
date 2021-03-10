@@ -238,7 +238,7 @@ impl Trap {
                     // want to lookup information for the previous instruction
                     // (the call instruction) so we subtract one as the lookup.
                     let pc_to_lookup = if Some(pc) == trap_pc { pc } else { pc - 1 };
-                    eprintln!("pc={}, lookup pc={}", pc, pc_to_lookup);
+                    eprintln!("pc={:#x}, lookup pc={:#x}", pc, pc_to_lookup);
                     if let Some((info, has_unparsed_debuginfo)) =
                         store.frame_info().borrow().lookup_frame_info(pc_to_lookup)
                     {
