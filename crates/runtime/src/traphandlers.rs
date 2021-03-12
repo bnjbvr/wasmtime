@@ -52,6 +52,14 @@ pub fn init_traps() {
     INIT.call_once(|| unsafe { sys::platform_init() });
 }
 
+/// This functions performs the low-overhead platform-specific initialization
+/// per thread. It is needed in addition to the above `init_traps`, and it
+/// performs thread initialization of traps, which is useful when a computation
+/// can run from one thread to another.
+pub fn init_thread_traps() -> Result<(), Trap> {
+    sys::lazy_per_thread_init()
+}
+
 /// Raises a user-defined trap immediately.
 ///
 /// This function performs as-if a wasm trap was just executed, only the trap
@@ -481,6 +489,7 @@ mod tls {
 
         #[inline(never)] // see module docs for why this is here
         pub fn replace(val: Ptr) -> Ptr {
+            super::super::sys::register_tls(val);
             PTR.with(|p| p.replace(val))
         }
 

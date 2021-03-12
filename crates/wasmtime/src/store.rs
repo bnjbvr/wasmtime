@@ -823,7 +823,14 @@ impl Store {
                 let cx =
                     unsafe { std::mem::transmute::<&mut Context<'_>, *mut Context<'static>>(cx) };
                 let prev = self.store.inner.current_poll_cx.replace(cx);
-                let _reste = Reset(&self.store.inner.current_poll_cx, prev);
+                let _reset = Reset(&self.store.inner.current_poll_cx, prev);
+
+                // We could have jumped to another thread that was never
+                // initialized, so make sure to re-run per-thread initialization
+                // in case this happened.
+                if let Err(trap) = wasmtime_runtime::init_thread_traps() {
+                    return Poll::Ready(Err(Trap::from_runtime(self.store, trap)));
+                }
 
                 // After that's set up we resume execution of the fiber, which
                 // may also start the fiber for the first time. This either
