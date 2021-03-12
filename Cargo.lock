@@ -1518,9 +1518,8 @@ dependencies = [
 
 [[package]]
 name = "mach"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
+version = "0.3.3"
+source = "git+https://github.com/bnjbvr/mach?branch=aarch64-support#081c98de45a9b13b98554124d513632274989eec"
 dependencies = [
  "libc",
 ]

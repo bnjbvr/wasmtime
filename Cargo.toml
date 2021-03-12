@@ -106,3 +106,6 @@ harness = false
 
 [profile.dev.package.backtrace]
 debug = false # FIXME(#1813)
+
+[patch.crates-io]
+mach = { git = "https://github.com/bnjbvr/mach", branch = "aarch64-support" }
