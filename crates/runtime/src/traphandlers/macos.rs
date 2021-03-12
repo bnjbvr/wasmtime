@@ -306,6 +306,9 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
     if jmp_buf.is_null() {
         return false;
     }
+    if jmp_buf as usize == 1 {
+        return false;
+    }
 
     // We have determined that this is a wasm trap and we need to actually
     // force the thread itself to trap. The thread's register state is
