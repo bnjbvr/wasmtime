@@ -10,7 +10,6 @@
 use crate::disasm::{print_all, PrintRelocs, PrintStackMaps, PrintTraps};
 use crate::utils::parse_sets_and_triple;
 use anyhow::{Context as _, Result};
-use cranelift_codegen::ir::DisplayFunctionAnnotations;
 use cranelift_codegen::print_errors::{pretty_error, pretty_verifier_error};
 use cranelift_codegen::settings::FlagsOrIsa;
 use cranelift_codegen::timing;
@@ -107,10 +106,6 @@ pub struct Options {
     #[structopt(short("c"))]
     check_translation: bool,
 
-    /// Display values' ranges and their locations
-    #[structopt(long("value-ranges"))]
-    value_ranges: bool,
-
     /// Use colors in output? [options: auto/never/always; default: auto]
     #[structopt(long("color"), default_value("auto"))]
     color: ColorOpt,
@@ -192,9 +187,8 @@ fn handle_module(options: &Options, path: &Path, name: &str, fisa: FlagsOrIsa) -
         }
     };
 
-    let debug_info = options.value_ranges;
     let mut dummy_environ =
-        DummyEnvironment::new(isa.frontend_config(), ReturnMode::NormalReturns, debug_info);
+        DummyEnvironment::new(isa.frontend_config(), ReturnMode::NormalReturns, false);
     translate_module(&module_binary, &mut dummy_environ)?;
 
     vcprintln!(options.verbose, use_color, terminal, Color::Green, "ok");
@@ -306,22 +300,6 @@ fn handle_module(options: &Options, path: &Path, name: &str, fisa: FlagsOrIsa) -
             {
                 println!("; Exported as \"{}\"", export_name);
             }
-            let value_ranges = if options.value_ranges {
-                Some(
-                    context
-                        .build_value_labels_ranges(isa)
-                        .expect("value location ranges"),
-                )
-            } else {
-                None
-            };
-            println!(
-                "{}",
-                context.func.display_with(DisplayFunctionAnnotations {
-                    isa: fisa.isa,
-                    value_ranges: value_ranges.as_ref(),
-                })
-            );
             vprintln!(options.verbose, "");
         }
 

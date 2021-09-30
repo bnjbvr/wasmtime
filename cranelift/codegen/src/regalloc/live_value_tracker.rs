@@ -148,13 +148,6 @@ impl LiveValueTracker {
         &self.live.values
     }
 
-    /// Get a mutable set of currently live values.
-    ///
-    /// Use with care and don't move entries around.
-    pub fn live_mut(&mut self) -> &mut [LiveValue] {
-        &mut self.live.values
-    }
-
     /// Move the current position to the top of `block`.
     ///
     /// This depends on the stored live value set at `block`'s immediate dominator, so that must have
