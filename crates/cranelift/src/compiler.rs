@@ -122,6 +122,156 @@ impl Compiler {
 }
 
 impl wasmtime_environ::Compiler for Compiler {
+    fn compile_batch(
+        &self,
+        translation: &ModuleTranslation<'_>,
+        functions: Vec<(DefinedFuncIndex, FunctionBodyData<'_>)>,
+        tunables: &Tunables,
+        types: &ModuleTypes,
+    ) -> Result<Vec<Box<dyn Any + Send>>, CompileError> {
+        let isa = &*self.isa;
+        let module = &translation.module;
+
+        let mut results: Vec<Box<dyn Any + Send>> = Vec::with_capacity(functions.len());
+
+        let CompilerContext {
+            mut func_translator,
+            codegen_context: mut context,
+        } = self.take_context();
+
+        for (func_index, mut input) in functions {
+            let func_index = module.func_index(func_index);
+
+            context.func.name = get_func_name(func_index);
+            context.func.signature = func_signature(isa, translation, types, func_index);
+            if tunables.generate_native_debuginfo {
+                context.func.collect_debug_info();
+            }
+
+            let mut func_env = FuncEnvironment::new(isa, translation, types, tunables);
+
+            // We use these as constant offsets below in
+            // `stack_limit_from_arguments`, so assert their values here. This
+            // allows the closure below to get coerced to a function pointer, as
+            // needed by `ir::Function`.
+            //
+            // Otherwise our stack limit is specially calculated from the vmctx
+            // argument, where we need to load the `*const VMRuntimeLimits`
+            // pointer, and then from that pointer we need to load the stack
+            // limit itself. Note that manual register allocation is needed here
+            // too due to how late in the process this codegen happens.
+            //
+            // For more information about interrupts and stack checks, see the
+            // top of this file.
+            let vmctx = context
+                .func
+                .create_global_value(ir::GlobalValueData::VMContext);
+            let interrupts_ptr = context.func.create_global_value(ir::GlobalValueData::Load {
+                base: vmctx,
+                offset: i32::try_from(func_env.offsets.vmctx_runtime_limits())
+                    .unwrap()
+                    .into(),
+                global_type: isa.pointer_type(),
+                readonly: true,
+            });
+            let stack_limit = context.func.create_global_value(ir::GlobalValueData::Load {
+                base: interrupts_ptr,
+                offset: i32::try_from(func_env.offsets.vmruntime_limits_stack_limit())
+                    .unwrap()
+                    .into(),
+                global_type: isa.pointer_type(),
+                readonly: false,
+            });
+            context.func.stack_limit = Some(stack_limit);
+            func_translator.translate_body(
+                &mut input.validator,
+                input.body.clone(),
+                &mut context.func,
+                &mut func_env,
+            )?;
+
+            let mut code_buf: Vec<u8> = Vec::new();
+            context
+                .compile_and_emit(isa, &mut code_buf)
+                .map_err(|error| CompileError::Codegen(pretty_error(&context.func, error)))?;
+
+            let result = context.mach_compile_result.as_ref().unwrap();
+
+            let func_relocs = result
+                .buffer
+                .relocs()
+                .into_iter()
+                .map(mach_reloc_to_reloc)
+                .collect::<Vec<_>>();
+
+            let traps = result
+                .buffer
+                .traps()
+                .into_iter()
+                .map(mach_trap_to_trap)
+                .collect::<Vec<_>>();
+
+            let stack_maps = mach_stack_maps_to_stack_maps(result.buffer.stack_maps());
+
+            let unwind_info = if isa.flags().unwind_info() {
+                context
+                    .create_unwind_info(isa)
+                    .map_err(|error| CompileError::Codegen(pretty_error(&context.func, error)))?
+            } else {
+                None
+            };
+
+            let address_transform =
+                self.get_function_address_map(&context, &input, code_buf.len() as u32, tunables);
+
+            let ranges = if tunables.generate_native_debuginfo {
+                Some(
+                    context
+                        .mach_compile_result
+                        .as_ref()
+                        .unwrap()
+                        .value_labels_ranges
+                        .clone(),
+                )
+            } else {
+                None
+            };
+
+            let timing = cranelift_codegen::timing::take_current();
+            log::debug!("{:?} translated in {:?}", func_index, timing.total());
+            log::trace!("{:?} timing info\n{}", func_index, timing);
+
+            let length = u32::try_from(code_buf.len()).unwrap();
+
+            let stack_slots = std::mem::take(&mut context.func.stack_slots);
+
+            results.push(Box::new(CompiledFunction {
+                body: code_buf,
+                relocations: func_relocs,
+                value_labels_ranges: ranges.unwrap_or(Default::default()),
+                stack_slots,
+                unwind_info,
+                traps,
+                info: FunctionInfo {
+                    start_srcloc: address_transform.start_srcloc,
+                    stack_maps,
+                    start: 0,
+                    length,
+                },
+                address_map: address_transform,
+            }));
+
+            context.clear();
+        }
+
+        self.save_context(CompilerContext {
+            func_translator,
+            codegen_context: context,
+        });
+
+        Ok(results)
+    }
+
     fn compile_function(
         &self,
         translation: &ModuleTranslation<'_>,

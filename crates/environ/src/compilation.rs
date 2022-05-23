@@ -151,6 +151,15 @@ pub trait Compiler: Send + Sync {
         types: &ModuleTypes,
     ) -> Result<Box<dyn Any + Send>, CompileError>;
 
+    /// TODO
+    fn compile_batch(
+        &self,
+        translation: &ModuleTranslation<'_>,
+        functions: Vec<(DefinedFuncIndex, FunctionBodyData<'_>)>,
+        tunables: &Tunables,
+        types: &ModuleTypes,
+    ) -> Result<Vec<Box<dyn Any + Send>>, CompileError>;
+
     /// Collects the results of compilation into an in-memory object.
     ///
     /// This function will receive the same `Box<dyn Ayn>` produced as part of

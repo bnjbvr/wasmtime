@@ -371,14 +371,61 @@ impl Module {
         // validation of function bodies.
         let tunables = &engine.config().tunables;
         let functions = mem::take(&mut translation.function_body_inputs);
-        let functions = functions.into_iter().collect::<Vec<_>>();
+        let mut functions = functions.into_iter().collect::<Vec<_>>();
+
+        let mut batches = Vec::with_capacity(65536);
+        let mut cur_batch = Vec::new();
+        let mut cur_size = 0;
+
+        let batch_threshold = std::env::var("S")
+            .unwrap_or_else(|_| "0".to_string())
+            .parse::<usize>()
+            .unwrap_or(0);
+
+        let mut num_batch = 0;
+        let mut avg_size = 0.0;
+        while let Some(func) = functions.pop() {
+            let func_size = func.1.body.range().len();
+            if func_size >= batch_threshold
+                || cur_size + func_size > (1.5 * batch_threshold as f64) as usize
+            {
+                avg_size =
+                    ((avg_size * (num_batch as f64)) + func_size as f64) / (num_batch + 1) as f64;
+                num_batch += 1;
+                batches.push(vec![func]);
+                continue;
+            }
+            cur_size += func_size;
+            //eprintln!("func size: {func_size}");
+            cur_batch.push(func);
+            if cur_size >= batch_threshold {
+                //eprintln!("batch size: {cur_size}");
+                avg_size =
+                    ((avg_size * (num_batch as f64)) + cur_size as f64) / (num_batch + 1) as f64;
+                num_batch += 1;
+                cur_size = 0;
+                batches.push(cur_batch);
+                cur_batch = Vec::new();
+            }
+        }
+        if !cur_batch.is_empty() {
+            //eprintln!("batch size: {cur_size}");
+            batches.push(cur_batch);
+            avg_size = ((avg_size * (num_batch as f64)) + cur_size as f64) / (num_batch + 1) as f64;
+            num_batch += 1;
+        }
+
+        eprintln!("num batches: {num_batch}");
+        eprintln!("avg_size: {avg_size}");
+
         let funcs = engine
-            .run_maybe_parallel(functions, |(index, func)| {
+            .run_maybe_parallel(batches, |batch| {
                 engine
                     .compiler()
-                    .compile_function(&translation, index, func, tunables, types)
+                    .compile_batch(&translation, batch, tunables, types)
             })?
             .into_iter()
+            .flatten()
             .collect();
 
         // Collect all the function results into a final ELF object.
